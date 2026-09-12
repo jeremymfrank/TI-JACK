@@ -11,7 +11,7 @@
         android:theme="@style/Theme.TIJack">
 
         <activity
-            android:name=".UsbProbeActivity"
+            android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop">
 
@@ -30,8 +30,7 @@
         </activity>
 
         <activity
-            android:name=".MainActivity"
-            android:exported="false"
-            android:launchMode="singleTop" />
+            android:name=".UsbProbeActivity"
+            android:exported="false" />
     </application>
 </manifest>
