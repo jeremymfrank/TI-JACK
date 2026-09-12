@@ -7,7 +7,7 @@
     android:background="@color/bg"
     android:paddingStart="14dp"
     android:paddingEnd="14dp"
-    android:paddingTop="14dp"
+    android:paddingTop="12dp"
     android:paddingBottom="8dp">
 
     <TextView
@@ -22,11 +22,11 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="EVO / ANDROID TRANSFER TEST 0.4"
+        android:text="EVO / ANDROID TRANSFER TEST 0.5"
         android:textColor="@color/amber_dim"
         android:textSize="11sp"
         android:gravity="center"
-        android:layout_marginBottom="10dp" />
+        android:layout_marginBottom="8dp" />
 
     <TextView
         android:id="@+id/connectionStatus"
@@ -58,16 +58,16 @@
         android:gravity="center"
         android:maxLines="3"
         android:layout_marginTop="3dp"
-        android:layout_marginBottom="7dp" />
+        android:layout_marginBottom="5dp" />
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="TAP ANDROID FILE → EVO   ·   TAP CALCULATOR FILE → ANDROID"
+        android:text="TAP FILES TO SELECT · USE BUTTONS TO TRANSFER SELECTION"
         android:textColor="@color/amber_dim"
         android:textSize="8sp"
         android:gravity="center"
-        android:layout_marginBottom="7dp" />
+        android:layout_marginBottom="6dp" />
 
     <View
         android:layout_width="match_parent"
@@ -79,8 +79,8 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingTop="5dp"
-        android:paddingBottom="4dp">
+        android:paddingTop="4dp"
+        android:paddingBottom="3dp">
 
         <LinearLayout
             android:layout_width="0dp"
@@ -110,21 +110,21 @@
         <Button
             android:id="@+id/chooseFolder"
             android:layout_width="wrap_content"
-            android:layout_height="38dp"
+            android:layout_height="36dp"
             android:text="CHOOSE FOLDER"
-            android:textSize="10sp"
+            android:textSize="9sp"
             android:textColor="@color/bg"
             android:backgroundTint="@color/amber"
             android:minHeight="0dp"
             android:minWidth="0dp"
-            android:paddingStart="10dp"
-            android:paddingEnd="10dp" />
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp" />
     </LinearLayout>
 
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="0.42"
+        android:layout_weight="0.40"
         android:fillViewport="true"
         android:background="@color/panel">
 
@@ -139,18 +139,30 @@
             android:paddingBottom="2dp" />
     </ScrollView>
 
+    <Button
+        android:id="@+id/sendSelected"
+        android:layout_width="match_parent"
+        android:layout_height="34dp"
+        android:text="SEND SELECTED →"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:textColor="@color/bg"
+        android:backgroundTint="@color/amber"
+        android:minHeight="0dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="4dp" />
+
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:layout_marginTop="7dp"
         android:background="@color/divider" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:paddingTop="5dp"
-        android:paddingBottom="4dp">
+        android:paddingTop="4dp"
+        android:paddingBottom="3dp">
 
         <TextView
             android:layout_width="0dp"
@@ -183,7 +195,7 @@
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="0.58"
+        android:layout_weight="0.60"
         android:fillViewport="true"
         android:background="@color/panel">
 
@@ -198,14 +210,26 @@
             android:paddingBottom="2dp" />
     </ScrollView>
 
+    <Button
+        android:id="@+id/saveSelected"
+        android:layout_width="match_parent"
+        android:layout_height="34dp"
+        android:text="← SAVE SELECTED"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:textColor="@color/bg"
+        android:backgroundTint="@color/amber"
+        android:minHeight="0dp"
+        android:layout_marginTop="4dp" />
+
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="SCHOOL PROPERTY"
         android:textColor="@color/amber_dim"
-        android:textSize="10sp"
+        android:textSize="9sp"
         android:textStyle="bold"
         android:gravity="center"
-        android:paddingTop="6dp" />
+        android:paddingTop="4dp" />
 
 </LinearLayout>
