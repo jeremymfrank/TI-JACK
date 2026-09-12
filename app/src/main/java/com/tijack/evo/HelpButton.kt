@@ -50,14 +50,19 @@ class HelpButton @JvmOverloads constructor(
         CREDITS
         TI-JACK project: Jawatech / jeremymfrank
         USB serial support: usb-serial-for-android
+        Legacy TI conversion: tivars_lib_cpp by Adrien Bertrand
         Independent project; not affiliated with or endorsed by Texas Instruments.
 
+        TRANSFER & CONVERSION
+        • Current Evo files transfer normally.
+        • Older TI-84 variable files such as .8xp are converted to Evo format before transfer when compatible.
+        • PNG, JPG, JPEG, and WebP images are converted to Evo Image1–Image7 background images. TI-JACK preserves the picture's proportions and fits it on the calculator screen.
+        • A file that cannot be safely converted is not sent to the calculator.
+        • Converted programs should be tested before classroom use because an older program can contain commands the Evo handles differently.
+
         CONNECTION TIPS
-        • TI-JACK requires Android USB host / OTG mode.
-        • On the tested Samsung + TI-84 Evo setup, direct USB-C to USB-C starts in the wrong USB role for TI-JACK.
-        • Known-good field setup: USB-C OTG/host adapter → USB-A to USB-C data cable → calculator. No external power is required.
-        • A real USB hub also works for testing, but is not required.
-        • Avoid repeatedly changing “USB controlled by” on affected Samsung phones; testing showed the USB options can stop responding until the phone is rebooted.
+        • Plug the USB-C adapter into the phone, then connect the calculator with a USB data cable.
+        • If the calculator is not detected, unplug both ends and reconnect them with the adapter still on the phone side.
         • Once TI-JACK shows TI-84 EVO CONNECTED, normal unplug/reconnect works automatically.
     """.trimIndent()
 }
