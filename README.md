@@ -6,13 +6,13 @@
 
 **Universal file transfer for TI calculators.**
 
-TI-JACK is an open-source file transfer and compatibility project for Texas Instruments calculators. The current Android transport targets the **TI-84 Evo** USB protocol, while the app and conversion layers are being built so additional TI families can use the same interface later.
+TI-JACK is an open-source file transfer and compatibility project for Texas Instruments calculators. The current Android transport targets the **TI-84 Evo** USB protocol, while transfer, conversion, validation, and conflict handling are kept separate so additional TI families can be added later.
 
 ## Current status
 
-**Android v0.17.3**
+**Android v0.18**
 
-The Evo transfer path is working on real hardware in both directions. TI-JACK can browse calculator variables, move multiple files, resolve duplicates, delete files on either side, and verify uploads by downloading them back from the calculator. Legacy TI-BASIC conversion and phone-image import are available as compatibility previews.
+The Evo transfer path works on real hardware in both directions. TI-JACK can browse calculator variables, transfer multiple files, replace or skip duplicates, delete files on either side, and verify uploads by downloading them back from the calculator. Legacy TI-BASIC conversion and media preparation are active compatibility previews.
 
 | Capability | Status |
 | --- | --- |
@@ -29,7 +29,9 @@ The Evo transfer path is working on real hardware in both directions. TI-JACK ca
 | Android folder picker | Working |
 | Legacy TI-BASIC `.8xp` → Evo `.8xp2` | Preview; hardware-tested with SNAKE |
 | Classic CE canvas centering / compatibility fixes | Preview; hardware-tested with SNAKE |
-| PNG / JPG / JPEG / WebP → Evo background image | Implemented; hardware validation continuing |
+| Named PNG / JPG / JPEG / WebP → IM8C `.8xv2` | Preview; ready for hardware/viewer testing |
+| Animated GIF → IM8C frames + animation manifest | Preview; ready for hardware/viewer testing |
+| Explicit `Image1`–`Image7` graph-background import | Implemented |
 | Additional calculator families | Planned |
 
 ## Hardware setup
@@ -54,10 +56,10 @@ On the tested Samsung phone, a direct USB-C-to-USB-C cable normally puts the pho
 ## Using the Android app
 
 1. Connect the calculator through the phone-side OTG/host adapter and wait for **TI-84 EVO CONNECTED**.
-2. Tap **CHOOSE FOLDER** and select the Android folder containing calculator files.
+2. Tap **CHOOSE FOLDER** and select the Android folder containing calculator files or media.
 3. Select one or more files in either pane.
 4. Tap **TRANSMIT** in the desired direction.
-5. If a destination already contains a file, choose **REPLACE** or **SKIP EXISTING**.
+5. If the destination already contains a variable, choose **REPLACE** or **SKIP EXISTING**.
 6. Use **DELETE**, **SELECT ALL**, and **CLEAR** as needed.
 7. Tap **?** for the installed version, connection tips, and conversion notes.
 
@@ -80,21 +82,37 @@ Legacy `.8xp` conversion is implemented in pure Kotlin; the Android APK contains
 
 The converter is intentionally fail-closed. It verifies the legacy TI file structure and checksum, maps only tokens TI-JACK knows how to convert, rebuilds a native Evo program container, validates the result, and refuses unknown or unsafe constructs instead of guessing.
 
-For programs built around the classic **265 × 165** color-calculator graph area, TI-JACK can preserve the original logical canvas rather than stretching it across the Evo display. When that layout is positively identified, the converter currently applies these compatibility rules:
-
-- centers the original `0..264 × 0..164` logical canvas on the Evo;
-- offsets pixel-based text and collision coordinates by the same margins;
-- keeps graph-coordinate drawing in the original coordinate system;
-- emulates standalone CE `BorderColor 1`–`4` outside the original canvas because Evo does not execute `BorderColor`;
-- converts CE Dot-Thick `Pt-On(...,1,...)` / `Pt-Off(...,1)` drawing to matching explicit **3 × 3** pixel footprints so drawing and erasing rasterize identically on Evo.
+For programs built around the classic **265 × 165** color-calculator graph area, TI-JACK can preserve the original logical canvas rather than stretching it across the Evo display. When that layout is positively identified, the converter currently centers the old canvas, keeps graph-coordinate drawing in the original coordinate system, offsets pixel-based coordinates consistently, and emulates unsupported CE-only visual behavior where it can do so safely.
 
 These transforms are deliberately narrow. If TI-JACK cannot identify a layout or command safely, conversion is refused rather than silently changing program behavior.
 
-### Image import
+### Viewer media
 
-PNG, JPG/JPEG, and WebP files can be converted locally into Evo **Image1–Image7** background-image variables (`.8ca2`). The image converter fits the source into the Evo 160 × 105 background canvas, preserves aspect ratio, converts to RGB565, writes the expected row order, and validates the generated Evo container before transmission.
+Ordinary still images now default to **named Evo IM8C AppVars (`.8xv2`)** rather than consuming a numbered graph-background slot. A file such as:
 
-A source named like `Image3.jpg` prefers **Image3**. Otherwise TI-JACK chooses an available image slot. Existing image variables use the normal **REPLACE / SKIP EXISTING** flow.
+```text
+FMRLOGO.png
+```
+
+becomes a calculator AppVar named `FMRLOGO` when that name fits the Evo naming rules. Longer or unsuitable filenames are shortened deterministically.
+
+TI-JACK fits still images within **320 × 210**, preserves aspect ratio, uses up to 256 indexed RGB565 colors, keeps one-bit transparency when present, and chooses indexed or RLE IM8C storage based on size. The result is a standard IM8C image AppVar, which also gives the future viewer a simple native image primitive rather than a TI-JACK-only pixel format.
+
+On an Evo Python environment with `ti_graphics`, a static test image can be exercised independently of the future viewer, for example:
+
+```python
+from ti_graphics import drawImage
+from ti_system import disp_wait
+
+drawImage("FMRLOGO", 0, 30)
+disp_wait()
+```
+
+Animated GIFs are decoded on Android before transfer. TI-JACK preserves the composited frame sequence, timing, and loop metadata, then sends one IM8C AppVar per frame plus a small **`TIJGIF01` manifest AppVar** describing frame order and delays. Frames are sent first and the manifest last. The current preview caps a GIF at 120 frames and 6 MiB of generated calculator variables.
+
+The manifest is intentionally documented so the separate calculator viewer project can consume it without depending on TI-JACK internals. See [`docs/TIJ_GIF_MANIFEST.md`](docs/TIJ_GIF_MANIFEST.md).
+
+If a still source is explicitly named `Image1` through `Image7` (or `Img1` through `Img7`), TI-JACK keeps the existing graph-background behavior and creates that `.8ca2` image slot instead.
 
 ## Transfer integrity
 
@@ -143,27 +161,28 @@ GitHub Actions builds every push to `main` with:
 The current artifact is named:
 
 ```text
-TI-JACK-Evo-Android-v0.17.3
+TI-JACK-Evo-Android-v0.18
 ```
 
 ## Known limitations
 
 - The Android USB transport currently targets the TI-84 Evo; other calculator transports are not implemented yet.
 - Legacy `.8xp` conversion does not yet cover every TI-BASIC token or every CE/Evo behavioral difference.
-- CE `BorderColor 2` uses a border-only color with no exact normal Evo drawing-color equivalent, so its emulated frame uses a conservative approximation.
-- Image import is implemented but is still receiving real-hardware validation.
+- The current pixel-exact SNAKE compatibility pass removes turn artifacts but has been observed to make movement slower; that optimization remains active work.
+- The new viewer-media path is a preview awaiting real-hardware validation with named IM8C images and prepared GIFs.
+- GIF playback requires the separate calculator-side viewer project; TI-JACK prepares and transfers the media but does not run the viewer on the calculator.
 - Direct USB-C-to-USB-C behavior depends on the phone's USB role; use a phone-side OTG/host adapter for the tested reliable setup.
 
 ## Project direction
 
 TI-JACK is intended to become one transfer application rather than a separate utility for every TI calculator generation. File selection, duplicate handling, conversion, deletion, validation, and verification are kept separate from calculator-specific transports so new calculator families can be added underneath the same workflow.
 
-Near-term work is focused on expanding legacy conversion from real program tests, improving visual/behavioral fidelity, completing image-import validation, and adding more TI calculator protocols.
+Near-term work is focused on hardware-testing the new viewer-media output, optimizing CE program fidelity/performance, expanding legacy token coverage from real programs, and adding more TI calculator protocols. The calculator-side media viewer is intentionally a separate software project; TI-JACK's role is to prepare and transfer compatible media for it.
 
 ## Credits
 
 TI-JACK project: **Jawatech / jeremymfrank**.
 
-Android USB serial support is provided by the MIT-licensed `usb-serial-for-android` project. Evo file/token research was cross-checked against Adrien "Adriweb" Bertrand's MIT-licensed `tivars_lib_cpp`; the current Android APK does **not** bundle that native library. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+Android USB serial support is provided by the MIT-licensed `usb-serial-for-android` project. Evo file/token research was cross-checked against Adrien "Adriweb" Bertrand's MIT-licensed `tivars_lib_cpp`. IM8C behavior was independently implemented from public format information and cross-checked against TI-Planet's `img2calc` research; no `img2calc` source is bundled in the APK. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 TI-JACK is an independent project and is not affiliated with or endorsed by Texas Instruments.
