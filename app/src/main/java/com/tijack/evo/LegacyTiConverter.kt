@@ -6,23 +6,28 @@ import java.io.ByteArrayOutputStream
 /**
  * Pure-Kotlin legacy TI-BASIC program converter.
  *
- * This first non-native conversion pass deliberately supports .8xp programs
- * only and refuses any token it cannot map with confidence. It also contains
- * a fidelity pass for CE programs that explicitly use the 0..264 by 0..164
- * graph canvas: that canvas is centered on the Evo instead of stretched.
+ * Conversion is deliberately strict: unsupported tokens fail instead of being
+ * guessed. A fidelity pass adapts a positively identified 265x165 CE canvas to
+ * the Evo while preserving the program's original logical coordinates.
  */
 internal object LegacyTiConverter {
     private const val LEGACY_PROGRAM = 0x05
     private const val LEGACY_PROTECTED_PROGRAM = 0x06
 
-    private const val EVO_NEW_LINE = 0xE41C
-    private const val EVO_ADD = 0xE428
-    private const val EVO_CHS = 0xE42E
-    private const val EVO_COMMA = 0xE417
+    private const val EVO_LPAREN = 0xE410
     private const val EVO_RPAREN = 0xE411
-    private const val EVO_TEXT = 0xE4F5
-    private const val EVO_PXL_TEST = 0xE4F2
+    private const val EVO_NEW_LINE = 0xE41C
+    private const val EVO_COMMA = 0xE417
+    private const val EVO_ADD = 0xE428
+    private const val EVO_SUB = 0xE429
+    private const val EVO_CHS = 0xE42E
     private const val EVO_LINE = 0xE4EB
+    private const val EVO_PT_OFF = 0xE4ED
+    private const val EVO_PT_ON = 0xE4EE
+    private const val EVO_PXL_OFF = 0xE4F0
+    private const val EVO_PXL_ON = 0xE4F1
+    private const val EVO_PXL_TEST = 0xE4F2
+    private const val EVO_TEXT = 0xE4F5
     private const val EVO_BORDER_COLOR = 0xE5BA
 
     // TI-84 Plus CE graph canvas dimensions used by programs such as SNAKE.
@@ -157,12 +162,7 @@ internal object LegacyTiConverter {
         return result
     }
 
-    /**
-     * Mapping used by the pure-Kotlin preview. It is intentionally strict:
-     * unknown tokens fail conversion rather than being replaced with '?'.
-     * The table covers the complete token set exercised by the SNAKE test
-     * program plus the common punctuation/variables that appear in it.
-     */
+    /** Strict mapping for the token set currently hardware-tested by TI-JACK. */
     private fun mapLegacyToken(token: Int): Int? = when (token) {
         0x0004 -> 0xE41D
         0x0006 -> 0xE412
@@ -192,6 +192,8 @@ internal object LegacyTiConverter {
         0x009C -> 0xE4EB
         0x009E -> 0xE4EE
         0x009F -> 0xE4ED
+        0x00A1 -> 0xE4F1
+        0x00A2 -> 0xE4F0
         0x00A6 -> 0xE4F4
         0x00AD -> 0xE4D1
         0x00B5 -> 0xE466
@@ -268,6 +270,18 @@ internal object LegacyTiConverter {
             if (centered) {
                 line = centeredWindowLine(line).toMutableList()
                 line = centerPixelBasedCommands(line).toMutableList()
+
+                // CE Dot-Thick points are a 3x3 pixel footprint. Real Evo
+                // hardware can rasterize Pt-On/Pt-Off slightly differently at a
+                // turn, leaving a single colored pixel behind. For the classic
+                // canvas only, replace literal mark-1 point operations with nine
+                // matching Pxl-On/Pxl-Off operations. Drawing and erasing then
+                // touch exactly the same pixels without changing game logic.
+                val exactPoint = emulateClassicCeDotPoint(line)
+                if (exactPoint != null) {
+                    result.addAll(exactPoint)
+                    continue
+                }
             }
 
             val borderIndex = line.indexOf(EVO_BORDER_COLOR)
@@ -283,14 +297,6 @@ internal object LegacyTiConverter {
                 require(centered) {
                     "BorderColor $color needs a recognized legacy graph canvas for safe Evo emulation; file was not sent"
                 }
-
-                // The Evo has no CE-style physical graph border. For a recognized
-                // 265x165 CE canvas, emulate that visual intent without touching
-                // the legacy drawing area: draw a two-pixel frame immediately
-                // outside x=0..264 and y=0..164 in the centered Evo margins.
-                // Border colors 2 and 3 are CE-only special colors; 2 (Snowy Mint)
-                // has no normal draw-color equivalent, so use LTGRAY as the closest
-                // conservative palette approximation rather than changing game data.
                 result.addAll(classicCeBorderLines(color))
                 continue
             }
@@ -298,6 +304,101 @@ internal object LegacyTiConverter {
         }
 
         return joinLines(result)
+    }
+
+    /**
+     * Convert Pt-On(x,y,1,color) and Pt-Off(x,y,1) to an exact 3x3 pixel block.
+     * Only the literal CE Dot-Thick mark (1) is rewritten. Other point styles
+     * retain their normal Evo point command until independently hardware-tested.
+     */
+    private fun emulateClassicCeDotPoint(line: List<Int>): List<List<Int>>? {
+        if (line.isEmpty()) return null
+        val command = line.first()
+        if (command != EVO_PT_ON && command != EVO_PT_OFF) return null
+
+        val args = splitTopLevelArguments(line) ?: return null
+        val expectedCount = if (command == EVO_PT_ON) 4 else 3
+        if (args.size != expectedCount || args[2] != listOf(0xE402)) return null
+
+        val x = args[0]
+        val y = args[1]
+        if (x.isEmpty() || y.isEmpty()) return null
+
+        val color = if (command == EVO_PT_ON) {
+            args[3].singleOrNull() ?: return null
+        } else {
+            null
+        }
+
+        val result = ArrayList<List<Int>>(9)
+        val centerRow = CE_Y_MAX + Y_OFFSET // 186 - y
+        for (dy in -1..1) {
+            for (dx in -1..1) {
+                val row = numberTokens(centerRow + dy) +
+                    listOf(EVO_SUB, EVO_LPAREN) + y + listOf(EVO_RPAREN)
+                val col = listOf(EVO_LPAREN) + x + listOf(EVO_RPAREN, EVO_ADD) +
+                    numberTokens(X_OFFSET + dx)
+                result += pixelCommand(
+                    token = if (command == EVO_PT_ON) EVO_PXL_ON else EVO_PXL_OFF,
+                    row = row,
+                    col = col,
+                    color = color
+                )
+            }
+        }
+        return result
+    }
+
+    /** Split command arguments while respecting explicit parentheses in expressions. */
+    private fun splitTopLevelArguments(line: List<Int>): List<List<Int>>? {
+        val args = ArrayList<List<Int>>()
+        var current = ArrayList<Int>()
+        var depth = 0
+
+        for (index in 1 until line.size) {
+            val token = line[index]
+            when {
+                token == EVO_LPAREN -> {
+                    depth++
+                    current += token
+                }
+                token == EVO_RPAREN && depth > 0 -> {
+                    depth--
+                    current += token
+                }
+                token == EVO_RPAREN && depth == 0 -> {
+                    if (index != line.lastIndex) return null
+                }
+                token == EVO_COMMA && depth == 0 -> {
+                    if (current.isEmpty()) return null
+                    args += current
+                    current = ArrayList()
+                }
+                else -> current += token
+            }
+        }
+        if (depth != 0 || current.isEmpty()) return null
+        args += current
+        return args
+    }
+
+    private fun pixelCommand(
+        token: Int,
+        row: List<Int>,
+        col: List<Int>,
+        color: Int?
+    ): List<Int> {
+        val result = ArrayList<Int>(row.size + col.size + 8)
+        result += token
+        result.addAll(row)
+        result += EVO_COMMA
+        result.addAll(col)
+        if (color != null) {
+            result += EVO_COMMA
+            result += color
+        }
+        result += EVO_RPAREN
+        return result
     }
 
     private fun classicCeBorderLines(borderColor: Int): List<List<Int>> {
@@ -399,7 +500,7 @@ internal object LegacyTiConverter {
         val y = listOf(EVO_ADD) + numberTokens(Y_OFFSET)
         var line = source.take(comma) + y + source.drop(comma)
         val x = listOf(EVO_ADD) + numberTokens(X_OFFSET)
-        line = line + x
+        line = line.take(line.size) + x
         return line
     }
 
