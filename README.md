@@ -8,9 +8,9 @@
 
 TI-JACK is an open-source project for moving calculator variables and programs between TI calculators and modern computers or mobile devices. The current Android hardware target is the **TI-84 Evo USB protocol** (`0451:E018`), with additional calculator families planned as the project grows.
 
-## Current status — Android v0.17
+## Current status — Android v0.17.1
 
-The Evo Android path is bidirectional and has been tested on real hardware. v0.17 restores legacy TI-BASIC `.8xp` conversion with a **pure-Kotlin, strict conversion preview** and adds an Evo fidelity pass for programs written around the older CE graph canvas.
+The Evo Android path is bidirectional and has been tested on real hardware. v0.17 restored legacy TI-BASIC `.8xp` conversion with a **pure-Kotlin, strict conversion preview** and added an Evo fidelity pass for programs written around the older CE graph canvas. v0.17.1 fixes the first hardware-test compatibility note so a removed `BorderColor` statement is no longer left behind as an executable token.
 
 | Capability | Status |
 | --- | --- |
@@ -72,13 +72,13 @@ Native Evo files transfer unchanged. Legacy TI-BASIC `.8xp` files display **[CON
 
 ## Conversion safety and fidelity
 
-TI-JACK does not send arbitrary files to the calculator. The v0.17 path is:
+TI-JACK does not send arbitrary files to the calculator. The current path is:
 
 ```text
 recognize source → convert if needed → validate Evo container → transmit → read back and verify
 ```
 
-The v0.16 native C++ converter experiment successfully produced an Evo file, but the test APK triggered a Google Play Protect warning and a converted Snake program exposed an important second issue: a structurally valid conversion can still contain commands the Evo no longer executes. v0.17 therefore uses a **pure-Kotlin converter** and treats program compatibility as part of conversion rather than merely repackaging tokens.
+The v0.16 native C++ converter experiment successfully produced an Evo file, but the test APK triggered a Google Play Protect warning and a converted Snake program exposed an important second issue: a structurally valid conversion can still contain commands the Evo no longer executes. v0.17 therefore moved legacy conversion to a **pure-Kotlin converter** and treats program compatibility as part of conversion rather than merely repackaging tokens.
 
 The current `.8xp` converter is intentionally strict. It validates the legacy TI file structure and checksum, converts only token mappings TI-JACK knows, creates a native Evo `.8xp2` CBOR container, validates that output, and refuses an unknown token instead of substituting a guess. Coverage will be expanded as programs are validated on real hardware.
 
@@ -89,12 +89,14 @@ The conversion priority is:
 1. preserve the original operation directly when Evo supports it,
 2. translate or emulate changed features where that can be done safely,
 3. preserve the original logical canvas and **center it** when stretching would alter hard-coded drawing/collision coordinates,
-4. retain a visible note in the converted source and avoid executing a removed command when there is no exact Evo equivalent,
+4. retain a visible source note and avoid executing a removed command when there is no exact Evo equivalent,
 5. refuse conversion rather than silently remove behavior that could change program logic.
 
-The first hardware fidelity target is the uploaded **SNAKE.8xp** program. It explicitly sets the classic color-calculator graph window to `0..264` by `0..164` and uses matching `Text(` / `pxl-Test(` coordinates. v0.17 detects that exact layout and centers the 265 × 165 logical canvas inside the Evo's larger graph area instead of stretching it. Graph-coordinate drawing remains in the legacy coordinate system, while pixel-based text/collision coordinates receive the matching center offset.
+The first hardware fidelity target is the uploaded **SNAKE.8xp** program. It explicitly sets the classic color-calculator graph window to `0..264` by `0..164` and uses matching `Text(` / `pxl-Test(` coordinates. The converter detects that exact layout and centers the 265 × 165 logical canvas inside the Evo's larger graph area instead of stretching it. Graph-coordinate drawing remains in the legacy coordinate system, while pixel-based text/collision coordinates receive the matching center offset.
 
-`BorderColor` is a special case. The Evo removed the old physical graph border, so there is no exact border-color target. Rather than silently deleting `BorderColor 2`, v0.17 keeps the original statement visible in the converted program as a TI-BASIC comment so it cannot generate a runtime `SYNTAX ERROR`. SNAKE also draws its own in-game frame, which remains active and is centered with the game canvas.
+`BorderColor` is a special case. The Evo removed the old physical graph border, so there is no exact border-color target. v0.17 attempted to retain `BorderColor 2` by prefixing the command with an apostrophe. Real-hardware testing showed that this was wrong: the apostrophe is a character token, not an executable comment, so the Evo still reached the unsupported `BorderColor` token and raised `SYNTAX ERROR`.
+
+v0.17.1 replaces the **entire** removed command with a quoted source-note string such as `"BorderColor 2"`, constructed only from supported character tokens. The original intent remains visible when the program is inspected, but the unsupported Evo token is no longer present in executable code. This is intentionally separate from visual emulation: the CE's Snowy Mint border color has no direct Evo drawing-color equivalent, so TI-JACK does not substitute a guessed color. SNAKE's own in-game frame remains active and centered with the game canvas.
 
 This is a preview, not a claim that every `.8xp` is already portable. A program using an unverified token or a layout TI-JACK cannot transform safely is refused instead of being sent as a questionable conversion.
 
@@ -154,7 +156,7 @@ The Android app currently uses:
 - Kotlin / Java 17
 - `usb-serial-for-android` 3.11.0
 - Android `DocumentFile` folder access
-- pure-Kotlin Evo/legacy conversion code; **no native converter or NDK is required in v0.17**
+- pure-Kotlin Evo/legacy conversion code; **no native converter or NDK is required in v0.17.1**
 
 Conversion happens locally on the phone and requires no Internet connection.
 
@@ -169,7 +171,7 @@ The included workflow is:
 Every push to `main` builds the debug APK and publishes it as:
 
 ```text
-TI-JACK-Evo-Android-v0.17
+TI-JACK-Evo-Android-v0.17.1
 ```
 
 ## Protocol notes
@@ -192,7 +194,7 @@ The app shows short user-facing status guidance directly in the UI and writes an
 
 ## Credits
 
-TI-JACK project: **Jawatech / jeremymfrank**. Android USB serial support is provided by the open-source `usb-serial-for-android` library. The legacy/Evo format work was cross-checked against the MIT-licensed `tivars_lib_cpp` Evo research by Adrien "Adriweb" Bertrand; v0.17 does **not** bundle that native library. See `THIRD_PARTY_NOTICES.md`.
+TI-JACK project: **Jawatech / jeremymfrank**. Android USB serial support is provided by the open-source `usb-serial-for-android` library. The legacy/Evo format work was cross-checked against the MIT-licensed `tivars_lib_cpp` Evo research by Adrien "Adriweb" Bertrand; v0.17.1 does **not** bundle that native library. See `THIRD_PARTY_NOTICES.md`.
 
 TI-JACK is an independent project and is not affiliated with or endorsed by Texas Instruments.
 
