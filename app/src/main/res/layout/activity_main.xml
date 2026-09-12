@@ -12,7 +12,8 @@
 
     <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="10dp">
 
         <TextView
             android:layout_width="match_parent"
@@ -37,15 +38,6 @@
     </FrameLayout>
 
     <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="EVO / ANDROID TRANSFER TEST 0.15"
-        android:textColor="@color/amber_dim"
-        android:textSize="11sp"
-        android:gravity="center"
-        android:layout_marginBottom="8dp" />
-
-    <TextView
         android:id="@+id/connectionStatus"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -65,7 +57,7 @@
         android:gravity="center"
         android:layout_marginTop="2dp" />
 
-    <TextView
+    <com.tijack.evo.FriendlyDiagnosticTextView
         android:id="@+id/diagnostic"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
