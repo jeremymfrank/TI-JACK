@@ -117,8 +117,33 @@ internal object EvoFileCodec {
     }
 
     fun sameIdentity(info: EvoFileInfo, entry: EvoEntry): Boolean {
-        val name = info.tokenName ?: return false
-        return info.type == entry.type && name.contentEquals(entry.tokenName)
+        if (info.type != entry.type) return false
+
+        val fileName = info.tokenName
+        if (fileName != null) {
+            val a = normalizedTokenName(fileName)
+            val b = normalizedTokenName(entry.tokenName)
+            if (a.contentEquals(b)) return true
+        }
+
+        // Some Evo resources differ only in whether the token-name byte string
+        // contains a trailing UTF-16 NUL word. If token bytes are unavailable or
+        // encoded slightly differently, same type + same decoded display name is
+        // still the same calculator variable for overwrite preflight purposes.
+        val decoded = info.displayName
+        return decoded != null && decoded.equals(entry.name, ignoreCase = true)
+    }
+
+    private fun normalizedTokenName(bytes: ByteArray): ByteArray {
+        var end = bytes.size - (bytes.size % 2)
+        while (
+            end >= 2 &&
+            bytes[end - 2].toInt() == 0 &&
+            bytes[end - 1].toInt() == 0
+        ) {
+            end -= 2
+        }
+        return bytes.copyOfRange(0, end)
     }
 
     private fun decodeCustomName(bytes: ByteArray): String? {
