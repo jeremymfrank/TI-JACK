@@ -109,10 +109,11 @@ internal class EvoUsbClient(
         overwrite: Boolean
     ): EvoUploadResult {
         val info = EvoFileCodec.inspect(file)
+        val payload = file.copyOfRange(0, file.size - 2)
         var archive = info.type in setOf(4, 5, 18)
 
         try {
-            putVariable(file, archive, overwrite)
+            putVariable(payload, archive, overwrite)
         } catch (first: Throwable) {
             val text = first.message.orEmpty()
             if (!archive && ("PM" in text || "DP" in text)) {
@@ -121,21 +122,69 @@ internal class EvoUsbClient(
                         "retrying Archive"
                 )
                 archive = true
-                putVariable(file, archive, overwrite)
+                putVariable(payload, archive, overwrite)
             } else {
                 throw first
             }
         }
 
+        verifyUpload(info, file)
         log(
-            "uploaded type=${info.type} ${file.size} bytes to " +
+            "uploaded and verified type=${info.type} " +
+                "disk=${file.size} payload=${payload.size} bytes to " +
                 if (archive) "Archive" else "RAM"
         )
         return EvoUploadResult(info, archive)
     }
 
+    private fun verifyUpload(
+        info: EvoFileInfo,
+        expectedFile: ByteArray
+    ) {
+        var match: EvoEntry? = null
+        var lastError: Throwable? = null
+
+        for (attempt in 1..3) {
+            try {
+                val entries = listFiles()
+                match = entries.firstOrNull {
+                    EvoFileCodec.sameIdentity(info, it)
+                }
+                if (match != null) break
+            } catch (t: Throwable) {
+                lastError = t
+                log(
+                    "upload verification directory attempt $attempt/3 failed: " +
+                        t.message.orEmpty()
+                )
+            }
+            SystemClock.sleep(120L * attempt)
+        }
+
+        val entry = match ?: run {
+            if (lastError != null) {
+                throw IOException(
+                    "upload was acknowledged but verification could not read the calculator directory",
+                    lastError
+                )
+            }
+            throw IOException(
+                "upload was acknowledged but the variable did not appear on the calculator"
+            )
+        }
+
+        val readBack = downloadVariable(entry)
+        if (!readBack.contentEquals(expectedFile)) {
+            throw IOException(
+                "upload verification mismatch for ${entry.name}: " +
+                    "sent ${expectedFile.size} bytes, read back ${readBack.size} bytes"
+            )
+        }
+        log("upload read-back verified ${entry.name} ${readBack.size} bytes")
+    }
+
     private fun putVariable(
-        file: ByteArray,
+        payload: ByteArray,
         archive: Boolean,
         overwrite: Boolean
     ) {
@@ -143,7 +192,7 @@ internal class EvoUsbClient(
         val policy = if (overwrite) 1 else 0
         putRequest(
             "hh01/xfr/var?memtarget=$memTarget&policy=$policy",
-            file
+            payload
         )
     }
 
@@ -180,6 +229,24 @@ internal class EvoUsbClient(
 
         sendExpectAck(serial, sequence++, 'Z', byteArrayOf(), session)
         sendExpectAck(serial, sequence, 'B', byteArrayOf(), session)
+
+        // Evo requests are request/response transactions. The calculator ACKs
+        // the transport packets first, then starts a server Kermit session that
+        // can carry the application-level success/error response. Consuming that
+        // response prevents the next directory request from discarding it as
+        // stale input and, importantly, surfaces errors after the final B ACK.
+        try {
+            val response = readServerResponse(serial, session)
+            log("upload response ${response.size} bytes")
+        } catch (t: Throwable) {
+            if ("timed out" in t.message.orEmpty().lowercase()) {
+                // Some firmware revisions may not emit a response body for a
+                // successful PUT. Read-back verification below is authoritative.
+                log("upload response timed out; falling back to read-back verification")
+            } else {
+                throw t
+            }
+        }
     }
 
     private fun getRequest(url: String): ByteArray {
@@ -212,6 +279,13 @@ internal class EvoUsbClient(
         sendExpectAck(serial, sequence++, 'Z', byteArrayOf(), session)
         sendExpectAck(serial, sequence, 'B', byteArrayOf(), session)
 
+        return readServerResponse(serial, session)
+    }
+
+    private fun readServerResponse(
+        serial: UsbSerialPort,
+        session: Kermit.Session
+    ): ByteArray {
         val serverInit = readPacket(serial, session, TIMEOUT_MS)
         if (serverInit.type == 'E') {
             throw IOException("calculator error: ${errorText(serverInit.data)}")
