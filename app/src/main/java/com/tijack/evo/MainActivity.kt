@@ -51,7 +51,12 @@ class MainActivity : Activity() {
     private lateinit var computerList: LinearLayout
     private lateinit var calculatorList: LinearLayout
     private lateinit var chooseFolder: Button
+    private lateinit var androidSelectAll: Button
+    private lateinit var androidClearSelection: Button
+    private lateinit var deleteAndroidSelected: Button
     private lateinit var sendSelected: Button
+    private lateinit var calculatorSelectAll: Button
+    private lateinit var calculatorClearSelection: Button
     private lateinit var saveSelected: Button
 
     private val executor = Executors.newSingleThreadExecutor()
@@ -65,6 +70,7 @@ class MainActivity : Activity() {
     private var calculatorEntries: List<EvoEntry> = emptyList()
     private var folder: DocumentFile? = null
     private var pendingDownloads: List<EvoEntry> = emptyList()
+    private var androidSelectableCount = 0
 
     private val selectedAndroid = LinkedHashSet<String>()
     private val selectedCalculator = LinkedHashSet<String>()
@@ -120,11 +126,21 @@ class MainActivity : Activity() {
         computerList = findViewById(R.id.computerList)
         calculatorList = findViewById(R.id.calculatorList)
         chooseFolder = findViewById(R.id.chooseFolder)
+        androidSelectAll = findViewById(R.id.androidSelectAll)
+        androidClearSelection = findViewById(R.id.androidClearSelection)
+        deleteAndroidSelected = findViewById(R.id.deleteAndroidSelected)
         sendSelected = findViewById(R.id.sendSelected)
+        calculatorSelectAll = findViewById(R.id.calculatorSelectAll)
+        calculatorClearSelection = findViewById(R.id.calculatorClearSelection)
         saveSelected = findViewById(R.id.saveSelected)
 
         chooseFolder.setOnClickListener { chooseAndroidFolder() }
+        androidSelectAll.setOnClickListener { selectAllAndroidFiles() }
+        androidClearSelection.setOnClickListener { clearAndroidSelection() }
+        deleteAndroidSelected.setOnClickListener { confirmDeleteAndroidSelection() }
         sendSelected.setOnClickListener { prepareUploadBatch() }
+        calculatorSelectAll.setOnClickListener { selectAllCalculatorEntries() }
+        calculatorClearSelection.setOnClickListener { clearCalculatorSelection() }
         saveSelected.setOnClickListener {
             prepareDownloadBatch(selectedCalculatorEntries())
         }
@@ -315,6 +331,7 @@ class MainActivity : Activity() {
     private fun renderAndroidFiles() {
         if (!::computerList.isInitialized) return
         computerList.removeAllViews()
+        androidSelectableCount = 0
         val currentFolder = folder
         if (currentFolder == null || !currentFolder.exists()) {
             selectedAndroid.clear()
@@ -331,6 +348,7 @@ class MainActivity : Activity() {
             currentFolder.listFiles().filter { it.isFile }
                 .sortedBy { it.name?.lowercase().orEmpty() }
         } catch (t: Throwable) {
+            selectedAndroid.clear()
             computerList.addView(
                 textCell("FOLDER ERROR: ${t.message.orEmpty()}", 11f, R.color.red)
             )
@@ -338,8 +356,9 @@ class MainActivity : Activity() {
             return
         }
 
-        val validKeys = files.filter { isEvoFilename(it.name.orEmpty()) }
-            .mapTo(HashSet()) { androidKey(it) }
+        val supportedFiles = files.filter { isEvoFilename(it.name.orEmpty()) }
+        val validKeys = supportedFiles.mapTo(HashSet()) { androidKey(it) }
+        androidSelectableCount = validKeys.size
         selectedAndroid.retainAll(validKeys)
 
         if (files.isEmpty()) {
@@ -473,6 +492,111 @@ class MainActivity : Activity() {
             calculatorList.addView(divider())
         }
         updateActionButtons()
+    }
+
+    private fun selectAllAndroidFiles() {
+        if (connecting || transferring) return
+        val currentFolder = folder ?: return
+        val files = try {
+            currentFolder.listFiles().filter {
+                it.isFile && isEvoFilename(it.name.orEmpty())
+            }
+        } catch (t: Throwable) {
+            appendLog("SELECT ALL ANDROID ERROR ${t.message.orEmpty()}")
+            return setLocalReady("COULD NOT READ ANDROID FOLDER")
+        }
+        selectedAndroid.clear()
+        files.forEach { selectedAndroid += androidKey(it) }
+        renderAndroidFiles()
+    }
+
+    private fun clearAndroidSelection() {
+        if (transferring) return
+        selectedAndroid.clear()
+        renderAndroidFiles()
+    }
+
+    private fun selectAllCalculatorEntries() {
+        if (connecting || transferring || client == null) return
+        selectedCalculator.clear()
+        calculatorEntries.forEach { selectedCalculator += calculatorKey(it) }
+        renderCalculatorEntries(calculatorEntries)
+    }
+
+    private fun clearCalculatorSelection() {
+        if (transferring) return
+        selectedCalculator.clear()
+        renderCalculatorEntries(calculatorEntries)
+    }
+
+    private fun confirmDeleteAndroidSelection() {
+        if (connecting || transferring || selectedAndroid.isEmpty()) return
+        val currentFolder = folder ?: return setLocalReady("NO ANDROID FOLDER SELECTED")
+        val files = try {
+            currentFolder.listFiles()
+                .filter { it.isFile && androidKey(it) in selectedAndroid }
+                .sortedBy { it.name?.lowercase().orEmpty() }
+        } catch (t: Throwable) {
+            appendLog("DELETE PREP ERROR ${t.message.orEmpty()}")
+            return setLocalReady("COULD NOT READ ANDROID FOLDER")
+        }
+        if (files.isEmpty()) {
+            selectedAndroid.clear()
+            renderAndroidFiles()
+            return
+        }
+
+        val count = files.size
+        AlertDialog.Builder(this)
+            .setTitle("Delete selected Android files?")
+            .setMessage(
+                "Delete $count selected file${if (count == 1) "" else "s"} from " +
+                    "${currentFolder.name ?: "the Android folder"}? This cannot be undone."
+            )
+            .setPositiveButton("DELETE") { _, _ -> startDeleteAndroidBatch(files) }
+            .setNegativeButton("CANCEL", null)
+            .show()
+    }
+
+    private fun startDeleteAndroidBatch(files: List<DocumentFile>) {
+        if (connecting || transferring || files.isEmpty()) return
+        transferring = true
+        updateActionButtons()
+        setLocalBusy("DELETING ${files.size} ANDROID FILE${if (files.size == 1) "" else "S"}")
+
+        executor.execute {
+            var deletedCount = 0
+            var failedCount = 0
+            val failedKeys = LinkedHashSet<String>()
+
+            for ((index, file) in files.withIndex()) {
+                runOnUiThread {
+                    diagnostic.text =
+                        "DELETING ${index + 1}/${files.size} · ${file.name ?: "ANDROID FILE"}"
+                }
+                try {
+                    if (file.delete()) {
+                        deletedCount++
+                    } else {
+                        failedCount++
+                        failedKeys += androidKey(file)
+                        appendLog("DELETE FAILED ${file.name.orEmpty()}: provider returned false")
+                    }
+                } catch (t: Throwable) {
+                    failedCount++
+                    failedKeys += androidKey(file)
+                    appendLog("DELETE ERROR ${file.name.orEmpty()}: ${t.message.orEmpty()}")
+                }
+            }
+
+            runOnUiThread {
+                transferring = false
+                selectedAndroid.clear()
+                selectedAndroid.addAll(failedKeys)
+                renderAndroidFiles()
+                setLocalReady("$deletedCount DELETED · $failedCount FAILED")
+            }
+        }
     }
 
     private fun prepareUploadBatch() {
@@ -761,6 +885,7 @@ class MainActivity : Activity() {
 
     private fun updateActionButtons() {
         if (!::sendSelected.isInitialized) return
+
         sendSelected.text = if (selectedAndroid.isEmpty()) {
             "SEND SELECTED →"
         } else {
@@ -771,9 +896,29 @@ class MainActivity : Activity() {
         } else {
             "← SAVE ${selectedCalculator.size}"
         }
+        deleteAndroidSelected.text = if (selectedAndroid.isEmpty()) {
+            "DELETE"
+        } else {
+            "DELETE ${selectedAndroid.size}"
+        }
+
         val enabled = !connecting && !transferring
-        sendSelected.isEnabled = enabled && selectedAndroid.isNotEmpty() && client != null
-        saveSelected.isEnabled = enabled && selectedCalculator.isNotEmpty() && client != null
+        chooseFolder.isEnabled = !transferring
+
+        androidSelectAll.isEnabled =
+            enabled && androidSelectableCount > 0 && selectedAndroid.size < androidSelectableCount
+        androidClearSelection.isEnabled = enabled && selectedAndroid.isNotEmpty()
+        deleteAndroidSelected.isEnabled =
+            enabled && selectedAndroid.isNotEmpty() && folder != null
+        sendSelected.isEnabled =
+            enabled && selectedAndroid.isNotEmpty() && client != null
+
+        calculatorSelectAll.isEnabled =
+            enabled && client != null && calculatorEntries.isNotEmpty() &&
+                selectedCalculator.size < calculatorEntries.size
+        calculatorClearSelection.isEnabled = enabled && selectedCalculator.isNotEmpty()
+        saveSelected.isEnabled =
+            enabled && selectedCalculator.isNotEmpty() && client != null
     }
 
     private fun batchSummary(done: Int, skipped: Int, failed: Int): String =
@@ -801,7 +946,7 @@ class MainActivity : Activity() {
         connectionStatus.setTextColor(getColor(R.color.amber))
         operationStatus.text = "SEARCHING..."
         operationStatus.setTextColor(getColor(R.color.amber))
-        diagnostic.text = "Set USB controlled by CONNECTED DEVICE if Android does not enumerate the Evo."
+        diagnostic.text = "Connect with the OTG/host adapter if Android does not enumerate the Evo."
         calculatorList.removeAllViews()
         updateActionButtons()
     }
@@ -829,6 +974,22 @@ class MainActivity : Activity() {
         connectionStatus.setTextColor(getColor(R.color.green))
         operationStatus.text = "READY"
         operationStatus.setTextColor(getColor(R.color.green))
+        diagnostic.text = detail.take(180)
+        updateActionButtons()
+    }
+
+    private fun setLocalBusy(detail: String) {
+        operationStatus.text = "DELETING..."
+        operationStatus.setTextColor(getColor(R.color.amber))
+        diagnostic.text = detail.take(180)
+        updateActionButtons()
+    }
+
+    private fun setLocalReady(detail: String) {
+        operationStatus.text = "READY"
+        operationStatus.setTextColor(
+            getColor(if (client != null) R.color.green else R.color.amber)
+        )
         diagnostic.text = detail.take(180)
         updateActionButtons()
     }
