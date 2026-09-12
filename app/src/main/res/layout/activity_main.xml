@@ -39,7 +39,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="EVO / ANDROID TRANSFER TEST 0.14"
+        android:text="EVO / ANDROID TRANSFER TEST 0.14.1"
         android:textColor="@color/amber_dim"
         android:textSize="11sp"
         android:gravity="center"
@@ -195,11 +195,11 @@
             android:minWidth="0dp" />
     </LinearLayout>
 
-    <Button
+    <com.tijack.evo.TransmitButton
         android:id="@+id/sendSelected"
         android:layout_width="match_parent"
         android:layout_height="34dp"
-        android:text="SEND SELECTED →"
+        android:text="TRANSMIT SELECTED →"
         android:textSize="10sp"
         android:textStyle="bold"
         android:textColor="@color/bg"
@@ -300,11 +300,11 @@
             android:minWidth="0dp" />
     </LinearLayout>
 
-    <Button
+    <com.tijack.evo.TransmitButton
         android:id="@+id/saveSelected"
         android:layout_width="match_parent"
         android:layout_height="34dp"
-        android:text="← SAVE SELECTED"
+        android:text="← TRANSMIT SELECTED"
         android:textSize="10sp"
         android:textStyle="bold"
         android:textColor="@color/bg"
