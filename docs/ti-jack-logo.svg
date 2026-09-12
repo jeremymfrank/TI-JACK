@@ -1,50 +1,57 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" role="img" aria-labelledby="title desc">
   <title id="title">TI-JACK</title>
   <desc id="desc">Retro transfer logo showing a phone and calculator connected by a cable with bidirectional data arrows.</desc>
-  <rect width="1200" height="520" rx="34" fill="#0b0c09"/>
+  <rect width="1200" height="700" rx="34" fill="#0b0c09"/>
 
   <g fill="none" stroke="#e2aa2a" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="90" y="72" width="238" height="292" rx="38"/>
-    <line x1="164" y1="104" x2="254" y2="104"/>
-    <line x1="181" y1="332" x2="237" y2="332"/>
-    <path d="M164 167h84l35 35v99H164z" stroke-width="14"/>
-    <path d="M248 167v39h35" stroke-width="14"/>
-    <line x1="188" y1="232" x2="256" y2="232" stroke-width="12"/>
-    <line x1="188" y1="260" x2="245" y2="260" stroke-width="12"/>
+    <rect x="90" y="68" width="238" height="292" rx="38"/>
+    <line x1="164" y1="100" x2="254" y2="100"/>
+    <line x1="181" y1="328" x2="237" y2="328"/>
+    <path d="M164 163h84l35 35v99H164z" stroke-width="14"/>
+    <path d="M248 163v39h35" stroke-width="14"/>
+    <line x1="188" y1="228" x2="256" y2="228" stroke-width="12"/>
+    <line x1="188" y1="256" x2="245" y2="256" stroke-width="12"/>
 
-    <rect x="846" y="58" width="266" height="318" rx="42"/>
-    <rect x="889" y="94" width="180" height="92" rx="8" stroke-width="14"/>
-    <path d="M914 157l34-29 30 23 30-34 31 25" stroke-width="10"/>
+    <rect x="846" y="54" width="266" height="318" rx="42"/>
+    <rect x="889" y="90" width="180" height="92" rx="8" stroke-width="14"/>
+    <path d="M914 153l34-29 30 23 30-34 31 25" stroke-width="10"/>
     <g stroke-width="12">
-      <line x1="904" y1="222" x2="936" y2="222"/>
-      <line x1="957" y1="222" x2="989" y2="222"/>
-      <line x1="1010" y1="222" x2="1042" y2="222"/>
-      <line x1="904" y1="257" x2="936" y2="257"/>
-      <line x1="957" y1="257" x2="989" y2="257"/>
-      <line x1="1010" y1="257" x2="1042" y2="257"/>
-      <line x1="904" y1="292" x2="936" y2="292"/>
-      <line x1="957" y1="292" x2="989" y2="292"/>
-      <line x1="1010" y1="292" x2="1042" y2="292"/>
-      <line x1="904" y1="327" x2="936" y2="327"/>
-      <line x1="957" y1="327" x2="989" y2="327"/>
-      <line x1="1010" y1="327" x2="1042" y2="327"/>
+      <line x1="904" y1="218" x2="936" y2="218"/>
+      <line x1="957" y1="218" x2="989" y2="218"/>
+      <line x1="1010" y1="218" x2="1042" y2="218"/>
+      <line x1="904" y1="253" x2="936" y2="253"/>
+      <line x1="957" y1="253" x2="989" y2="253"/>
+      <line x1="1010" y1="253" x2="1042" y2="253"/>
+      <line x1="904" y1="288" x2="936" y2="288"/>
+      <line x1="957" y1="288" x2="989" y2="288"/>
+      <line x1="1010" y1="288" x2="1042" y2="288"/>
+      <line x1="904" y1="323" x2="936" y2="323"/>
+      <line x1="957" y1="323" x2="989" y2="323"/>
+      <line x1="1010" y1="323" x2="1042" y2="323"/>
     </g>
 
-    <path d="M209 364v49q0 29 29 29h308"/>
-    <path d="M979 376v37q0 29-29 29H654"/>
-    <rect x="548" y="418" width="104" height="49" rx="14"/>
+    <path d="M209 360v67q0 29 29 29h308"/>
+    <path d="M979 372v55q0 29-29 29H654"/>
+    <rect x="548" y="430" width="104" height="52" rx="14"/>
   </g>
 
-  <circle cx="600" cy="443" r="13" fill="#68d46d"/>
+  <circle cx="600" cy="456" r="13" fill="#68d46d"/>
 
   <g fill="#68d46d">
-    <path d="M455 182h155v-38l77 64-77 64v-38H455z"/>
-    <rect x="406" y="195" width="23" height="23" rx="3"/>
-    <rect x="366" y="195" width="23" height="23" rx="3"/>
-    <path d="M745 292H590v-38l-77 64 77 64v-38h155z"/>
-    <rect x="771" y="305" width="23" height="23" rx="3"/>
-    <rect x="811" y="305" width="23" height="23" rx="3"/>
+    <path d="M455 176h155v-38l77 64-77 64v-38H455z"/>
+    <rect x="406" y="189" width="23" height="23" rx="3"/>
+    <rect x="366" y="189" width="23" height="23" rx="3"/>
+    <path d="M745 286H590v-38l-77 64 77 64v-38h155z"/>
+    <rect x="771" y="299" width="23" height="23" rx="3"/>
+    <rect x="811" y="299" width="23" height="23" rx="3"/>
   </g>
 
-  <text x="600" y="497" fill="#e2aa2a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="92" font-weight="800" text-anchor="middle" letter-spacing="8">TI-JACK</text>
+  <text x="600" y="595" fill="#e2aa2a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="96" font-weight="800" text-anchor="middle" letter-spacing="8">TI-JACK</text>
+  <line x1="238" y1="642" x2="515" y2="642" stroke="#e2aa2a" stroke-width="10" stroke-linecap="round"/>
+  <line x1="685" y1="642" x2="962" y2="642" stroke="#e2aa2a" stroke-width="10" stroke-linecap="round"/>
+  <g fill="#68d46d">
+    <rect x="560" y="632" width="20" height="20" rx="3"/>
+    <rect x="590" y="632" width="20" height="20" rx="3"/>
+    <rect x="620" y="632" width="20" height="20" rx="3"/>
+  </g>
 </svg>
