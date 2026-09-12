@@ -72,6 +72,7 @@ class MainActivity : Activity() {
     private var folder: DocumentFile? = null
     private var pendingDownloads: List<EvoEntry> = emptyList()
     private var androidSelectableCount = 0
+    private var pendingImageSlots: Map<String, Int> = emptyMap()
 
     private val selectedAndroid = LinkedHashSet<String>()
     private val selectedCalculator = LinkedHashSet<String>()
@@ -359,7 +360,7 @@ class MainActivity : Activity() {
             return
         }
 
-        val supportedFiles = files.filter { isEvoFilename(it.name.orEmpty()) }
+        val supportedFiles = files.filter { isTransferableFilename(it.name.orEmpty()) }
         val validKeys = supportedFiles.mapTo(HashSet()) { androidKey(it) }
         androidSelectableCount = validKeys.size
         selectedAndroid.retainAll(validKeys)
@@ -372,7 +373,8 @@ class MainActivity : Activity() {
 
         for (file in files) {
             val name = file.name ?: "(unnamed)"
-            val supported = isEvoFilename(name)
+            val supported = isTransferableFilename(name)
+            val badge = conversionBadge(name)
             val key = androidKey(file)
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -406,10 +408,11 @@ class MainActivity : Activity() {
 
             fun refreshSelection() {
                 val selected = key in selectedAndroid
+                val decorated = if (badge == null) name else "$name  [$badge]"
                 title.text = when {
-                    !supported -> "$name  [NOT EVO]"
-                    selected -> "✓ $name"
-                    else -> name
+                    !supported -> "$name  [UNSUPPORTED]"
+                    selected -> "✓ $decorated"
+                    else -> decorated
                 }
                 marker.text = if (selected) "SEL" else ""
                 row.setBackgroundColor(getColor(if (selected) R.color.selection else R.color.panel))
@@ -502,7 +505,7 @@ class MainActivity : Activity() {
         val currentFolder = folder ?: return
         val files = try {
             currentFolder.listFiles().filter {
-                it.isFile && isEvoFilename(it.name.orEmpty())
+                it.isFile && isTransferableFilename(it.name.orEmpty())
             }
         } catch (t: Throwable) {
             appendLog("SELECT ALL ANDROID ERROR ${t.message.orEmpty()}")
@@ -689,6 +692,12 @@ class MainActivity : Activity() {
             .sortedBy { it.name?.lowercase().orEmpty() }
         if (files.isEmpty()) return
 
+        val imageFiles = files.filter { EvoImageConverter.canConvertFilename(it.name.orEmpty()) }
+        if (imageFiles.size > 7) {
+            return setTransferError("THE EVO HAS 7 IMAGE SLOTS · SELECT 7 OR FEWER IMAGES")
+        }
+        pendingImageSlots = allocateImageSlots(imageFiles, calculatorEntries)
+
         transferring = true
         updateActionButtons()
         setTransferStatus("READING ${files.size} SELECTED FILE${if (files.size == 1) "" else "S"}")
@@ -700,8 +709,13 @@ class MainActivity : Activity() {
             for ((index, file) in files.withIndex()) {
                 try {
                     runOnUiThread {
-                        diagnostic.text =
-                            "READING ${index + 1}/${files.size} · ${file.name ?: "ANDROID FILE"}"
+                        val fileName = file.name ?: "ANDROID FILE"
+                        val action = when {
+                            EvoImageConverter.canConvertFilename(fileName) -> "CONVERTING IMAGE"
+                            LegacyTiConverter.canConvertFilename(fileName) -> "CONVERTING"
+                            else -> "READING"
+                        }
+                        diagnostic.text = "$action ${index + 1}/${files.size} · $fileName"
                     }
                     val data = readDocumentFile(file)
                     runOnUiThread {
@@ -717,6 +731,7 @@ class MainActivity : Activity() {
                 }
             }
 
+            pendingImageSlots = emptyMap()
             runOnUiThread {
                 transferring = false
                 updateActionButtons()
@@ -871,6 +886,22 @@ class MainActivity : Activity() {
     }
 
     private fun readDocumentFile(file: DocumentFile): ByteArray {
+        val raw = readRawDocumentFile(file)
+        val name = file.name.orEmpty()
+        return when {
+            isNativeEvoFilename(name) -> raw
+            LegacyTiConverter.canConvertFilename(name) ->
+                LegacyTiConverter.convertToEvo(raw, name, cacheDir, smart = true)
+            EvoImageConverter.canConvertFilename(name) -> {
+                val slot = pendingImageSlots[androidKey(file)]
+                    ?: error("no Evo image slot was assigned to $name")
+                EvoImageConverter.convertToBackgroundImage(raw, slot)
+            }
+            else -> error("unsupported file type")
+        }
+    }
+
+    private fun readRawDocumentFile(file: DocumentFile): ByteArray {
         val declared = file.length()
         require(declared >= 0) { "Android reported an invalid file size" }
         require(declared <= 64L * 1024L * 1024L) { "file is too large" }
@@ -1014,13 +1045,56 @@ class MainActivity : Activity() {
     private fun sortedEntries(entries: List<EvoEntry>): List<EvoEntry> =
         entries.sortedWith(compareBy<EvoEntry> { it.type }.thenBy { it.name.lowercase() })
 
-    private fun isEvoFilename(name: String): Boolean {
+    private fun isNativeEvoFilename(name: String): Boolean {
         val lower = name.lowercase()
         return listOf(
             ".8xn2", ".8xl2", ".8xp2", ".8xd2", ".8ci2",
             ".8ca2", ".8xm2", ".8xy2", ".8xv2", ".8xs2",
             ".8xw2", ".8xz2", ".8xt2", ".8xpy2", ".8mp2"
         ).any { lower.endsWith(it) }
+    }
+
+    private fun isTransferableFilename(name: String): Boolean =
+        isNativeEvoFilename(name) ||
+            LegacyTiConverter.canConvertFilename(name) ||
+            EvoImageConverter.canConvertFilename(name)
+
+    private fun conversionBadge(name: String): String? = when {
+        isNativeEvoFilename(name) -> null
+        LegacyTiConverter.canConvertFilename(name) -> "CONVERT"
+        EvoImageConverter.canConvertFilename(name) -> "TO IMAGE"
+        else -> null
+    }
+
+    private fun allocateImageSlots(
+        files: List<DocumentFile>,
+        existing: List<EvoEntry>
+    ): Map<String, Int> {
+        if (files.isEmpty()) return emptyMap()
+        require(files.size <= 7) { "The Evo has only 7 background image slots" }
+
+        val occupied = existing.asSequence()
+            .filter { it.type == 5 }
+            .mapNotNull { entry ->
+                Regex("(?i)^Image([1-7])$")
+                    .matchEntire(entry.name)
+                    ?.groupValues
+                    ?.get(1)
+                    ?.toIntOrNull()
+            }
+            .toMutableSet()
+        val assigned = mutableSetOf<Int>()
+        val result = LinkedHashMap<String, Int>()
+
+        for (file in files) {
+            val preferred = EvoImageConverter.preferredSlotFromFilename(file.name.orEmpty())
+            val slot = preferred?.takeIf { it !in assigned }
+                ?: (1..7).firstOrNull { it !in occupied && it !in assigned }
+                ?: (1..7).first { it !in assigned }
+            assigned += slot
+            result[androidKey(file)] = slot
+        }
+        return result
     }
 
     private fun setSearching() {
