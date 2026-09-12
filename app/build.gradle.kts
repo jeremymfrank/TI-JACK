@@ -11,8 +11,8 @@ android {
         applicationId = "com.tijack.evo"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = 4
+        versionName = "0.4"
     }
 
     buildTypes {
@@ -37,4 +37,5 @@ android {
 
 dependencies {
     implementation("com.github.mik3y:usb-serial-for-android:3.11.0")
+    implementation("androidx.documentfile:documentfile:1.0.1")
 }
