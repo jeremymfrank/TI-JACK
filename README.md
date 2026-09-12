@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/ti-jack-logo.svg" alt="TI-JACK logo" width="760">
+  <img src="docs/ti-jack-banner.jpg" alt="TI-JACK — Universal file transfer for TI calculators" width="900">
 </p>
 
 # TI-JACK
