@@ -120,16 +120,15 @@ internal object EvoFileCodec {
         if (info.type != entry.type) return false
 
         val fileName = info.tokenName
-        if (fileName != null) {
-            val a = normalizedTokenName(fileName)
-            val b = normalizedTokenName(entry.tokenName)
-            if (a.contentEquals(b)) return true
+        if (fileName != null && fileName.isNotEmpty() && entry.tokenName.isNotEmpty()) {
+            return normalizedTokenName(fileName)
+                .contentEquals(normalizedTokenName(entry.tokenName))
         }
 
-        // Some Evo resources differ only in whether the token-name byte string
-        // contains a trailing UTF-16 NUL word. If token bytes are unavailable or
-        // encoded slightly differently, same type + same decoded display name is
-        // still the same calculator variable for overwrite preflight purposes.
+        // Only fall back to display text when one side genuinely has no token
+        // identity. If both token byte strings are present and differ, they are
+        // different calculator variables even if their rendered names happen to
+        // look the same.
         val decoded = info.displayName
         return decoded != null && decoded.equals(entry.name, ignoreCase = true)
     }
