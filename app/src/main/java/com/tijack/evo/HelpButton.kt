@@ -54,9 +54,9 @@ class HelpButton @JvmOverloads constructor(
 
         TRANSFER & CONVERSION
         • Current Evo files transfer normally.
-        • Legacy .8xp conversion is back as a pure-Kotlin preview; no native converter is included.
+        • Legacy .8xp conversion is available as a pure-Kotlin preview; no native converter is included.
         • Programs using the classic 265 × 165 CE graph canvas are centered on the Evo when TI-JACK can identify that layout safely.
-        • Evo has no physical graph border to color. BorderColor statements are retained in converted source as comments instead of being silently deleted.
+        • Evo has no physical graph border to color. BorderColor statements are replaced with a quoted source note so the original intent remains visible without executing the removed command.
         • PNG, JPG, JPEG, and WebP images are converted to Evo Image1–Image7 background images while preserving proportions.
         • A token or layout TI-JACK cannot convert safely is refused instead of guessed.
 
