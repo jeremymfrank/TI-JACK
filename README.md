@@ -8,7 +8,7 @@
 
 TI-JACK is an open-source project for moving calculator variables and programs between TI calculators and modern computers or mobile devices. The current Android hardware target is the **TI-84 Evo USB protocol** (`0451:E018`), with additional calculator families planned as the project grows.
 
-## Current status — Android v0.16
+## Current status — Android v0.16.1
 
 The Evo Android path is bidirectional and has been tested on real hardware. v0.16 adds a conversion layer in front of the already-verified Evo transfer path.
 

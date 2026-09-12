@@ -710,10 +710,10 @@ class MainActivity : Activity() {
                 try {
                     runOnUiThread {
                         val fileName = file.name ?: "ANDROID FILE"
-                        val action = when {
-                            EvoImageConverter.canConvertFilename(fileName) -> "CONVERTING IMAGE"
-                            LegacyTiConverter.canConvertFilename(fileName) -> "CONVERTING"
-                            else -> "READING"
+                        val action = if (EvoImageConverter.canConvertFilename(fileName)) {
+                            "CONVERTING IMAGE"
+                        } else {
+                            "READING"
                         }
                         diagnostic.text = "$action ${index + 1}/${files.size} · $fileName"
                     }
@@ -890,8 +890,6 @@ class MainActivity : Activity() {
         val name = file.name.orEmpty()
         return when {
             isNativeEvoFilename(name) -> raw
-            LegacyTiConverter.canConvertFilename(name) ->
-                LegacyTiConverter.convertToEvo(raw, name, cacheDir, smart = true)
             EvoImageConverter.canConvertFilename(name) -> {
                 val slot = pendingImageSlots[androidKey(file)]
                     ?: error("no Evo image slot was assigned to $name")
@@ -1055,13 +1053,10 @@ class MainActivity : Activity() {
     }
 
     private fun isTransferableFilename(name: String): Boolean =
-        isNativeEvoFilename(name) ||
-            LegacyTiConverter.canConvertFilename(name) ||
-            EvoImageConverter.canConvertFilename(name)
+        isNativeEvoFilename(name) || EvoImageConverter.canConvertFilename(name)
 
     private fun conversionBadge(name: String): String? = when {
         isNativeEvoFilename(name) -> null
-        LegacyTiConverter.canConvertFilename(name) -> "CONVERT"
         EvoImageConverter.canConvertFilename(name) -> "TO IMAGE"
         else -> null
     }

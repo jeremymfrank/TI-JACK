@@ -50,15 +50,13 @@ class HelpButton @JvmOverloads constructor(
         CREDITS
         TI-JACK project: Jawatech / jeremymfrank
         USB serial support: usb-serial-for-android
-        Legacy TI conversion: tivars_lib_cpp by Adrien Bertrand
         Independent project; not affiliated with or endorsed by Texas Instruments.
 
         TRANSFER & CONVERSION
         • Current Evo files transfer normally.
-        • Older TI-84 variable files such as .8xp are converted to Evo format before transfer when compatible.
+        • Legacy TI-84 conversion such as .8xp is temporarily paused in v0.16.1 while we replace the native converter that triggered a Play Protect warning.
         • PNG, JPG, JPEG, and WebP images are converted to Evo Image1–Image7 background images. TI-JACK preserves the picture's proportions and fits it on the calculator screen.
         • A file that cannot be safely converted is not sent to the calculator.
-        • Converted programs should be tested before classroom use because an older program can contain commands the Evo handles differently.
 
         CONNECTION TIPS
         • Plug the USB-C adapter into the phone, then connect the calculator with a USB data cable.
