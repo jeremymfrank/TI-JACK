@@ -109,11 +109,13 @@ internal class EvoUsbClient(
         overwrite: Boolean
     ): EvoUploadResult {
         val info = EvoFileCodec.inspect(file)
-        val payload = file.copyOfRange(0, file.size - 2)
+        require(!info.tokenName.isNullOrEmpty()) {
+            "Evo file metadata has no variable name"
+        }
         var archive = info.type in setOf(4, 5, 18)
 
         try {
-            putVariable(payload, archive, overwrite)
+            putVariable(file, info, archive, overwrite)
         } catch (first: Throwable) {
             val text = first.message.orEmpty()
             if (!archive && ("PM" in text || "DP" in text)) {
@@ -122,16 +124,19 @@ internal class EvoUsbClient(
                         "retrying Archive"
                 )
                 archive = true
-                putVariable(payload, archive, overwrite)
+                putVariable(file, info, archive, overwrite)
             } else {
                 throw first
             }
         }
 
+        // Give the calculator a short moment to publish the newly committed
+        // variable into its directory before verification starts.
+        SystemClock.sleep(120)
         verifyUpload(info, file)
         log(
             "uploaded and verified type=${info.type} " +
-                "disk=${file.size} payload=${payload.size} bytes to " +
+                "payload=${file.size} bytes to " +
                 if (archive) "Archive" else "RAM"
         )
         return EvoUploadResult(info, archive)
@@ -173,6 +178,10 @@ internal class EvoUsbClient(
             )
         }
 
+        log(
+            "upload directory verified ${entry.name} type=${entry.type} " +
+                "mem=${if (entry.archived) "Archive" else "RAM"} size=${entry.size}"
+        )
         val readBack = downloadVariable(entry)
         if (!readBack.contentEquals(expectedFile)) {
             throw IOException(
@@ -185,15 +194,23 @@ internal class EvoUsbClient(
 
     private fun putVariable(
         payload: ByteArray,
+        info: EvoFileInfo,
         archive: Boolean,
         overwrite: Boolean
     ) {
+        val tokenName = requireNotNull(info.tokenName)
+        val encodedName = EvoFileCodec.urlEncodeTokenName(tokenName)
+        require(encodedName.isNotBlank()) { "Evo variable name is empty" }
         val memTarget = if (archive) 1 else 0
         val policy = if (overwrite) 1 else 0
-        putRequest(
-            "hh01/xfr/var?memtarget=$memTarget&policy=$policy",
-            payload
+        val url =
+            "hh01/xfr/var?name=$encodedName&type=${info.type}" +
+                "&memtarget=$memTarget&policy=$policy"
+        log(
+            "upload request type=${info.type} memtarget=$memTarget " +
+                "policy=$policy name=$encodedName"
         )
+        putRequest(url, payload)
     }
 
     private fun putRequest(url: String, payload: ByteArray) {
@@ -230,23 +247,12 @@ internal class EvoUsbClient(
         sendExpectAck(serial, sequence++, 'Z', byteArrayOf(), session)
         sendExpectAck(serial, sequence, 'B', byteArrayOf(), session)
 
-        // Evo requests are request/response transactions. The calculator ACKs
-        // the transport packets first, then starts a server Kermit session that
-        // can carry the application-level success/error response. Consuming that
-        // response prevents the next directory request from discarding it as
-        // stale input and, importantly, surfaces errors after the final B ACK.
-        try {
-            val response = readServerResponse(serial, session)
-            log("upload response ${response.size} bytes")
-        } catch (t: Throwable) {
-            if ("timed out" in t.message.orEmpty().lowercase()) {
-                // Some firmware revisions may not emit a response body for a
-                // successful PUT. Read-back verification below is authoritative.
-                log("upload response timed out; falling back to read-back verification")
-            } else {
-                throw t
-            }
-        }
+        // The observed Evo upload transaction ends here: S/F/A/D*/Z/B,
+        // with a Y acknowledgment for every outbound packet. Unlike GET,
+        // PUT does not start a second server-to-client Kermit response session.
+        // Waiting for one leaves the link in the wrong state and can interfere
+        // with the next request or reconnect.
+        drainInput(30)
     }
 
     private fun getRequest(url: String): ByteArray {
@@ -545,9 +551,20 @@ internal class EvoUsbClient(
     }
 
     override fun close() {
-        try {
-            port?.close()
-        } catch (_: Throwable) {
+        val serial = port
+        if (serial != null) {
+            try {
+                serial.setDTR(false)
+            } catch (_: Throwable) {
+            }
+            try {
+                serial.setRTS(false)
+            } catch (_: Throwable) {
+            }
+            try {
+                serial.close()
+            } catch (_: Throwable) {
+            }
         }
         try {
             connection?.close()
