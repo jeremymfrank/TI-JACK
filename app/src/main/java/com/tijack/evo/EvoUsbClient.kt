@@ -109,7 +109,8 @@ internal class EvoUsbClient(
         overwrite: Boolean
     ): EvoUploadResult {
         val info = EvoFileCodec.inspect(file)
-        require(!info.tokenName.isNullOrEmpty()) {
+        val tokenName = info.tokenName
+        require(tokenName != null && tokenName.isNotEmpty()) {
             "Evo file metadata has no variable name"
         }
         var archive = info.type in setOf(4, 5, 18)
