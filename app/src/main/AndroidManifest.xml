@@ -11,7 +11,7 @@
         android:theme="@style/Theme.TIJack">
 
         <activity
-            android:name=".MainActivity"
+            android:name=".UsbProbeActivity"
             android:exported="true"
             android:launchMode="singleTop">
 
@@ -28,5 +28,10 @@
                 android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
                 android:resource="@xml/device_filter" />
         </activity>
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"
+            android:launchMode="singleTop" />
     </application>
 </manifest>
