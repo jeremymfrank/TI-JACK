@@ -7,7 +7,7 @@ import java.io.ByteArrayOutputStream
  * Pure-Kotlin legacy TI-BASIC program converter.
  *
  * This first non-native conversion pass deliberately supports .8xp programs
- * only and refuses any token it cannot map with confidence.  It also contains
+ * only and refuses any token it cannot map with confidence. It also contains
  * a fidelity pass for CE programs that explicitly use the 0..264 by 0..164
  * graph canvas: that canvas is centered on the Evo instead of stretched.
  */
@@ -16,7 +16,7 @@ internal object LegacyTiConverter {
     private const val LEGACY_PROTECTED_PROGRAM = 0x06
 
     private const val EVO_NEW_LINE = 0xE41C
-    private const val EVO_APOSTROPHE = 0xE41A
+    private const val EVO_QUOTE = 0xE416
     private const val EVO_SPACE = 0xE419
     private const val EVO_ADD = 0xE428
     private const val EVO_CHS = 0xE42E
@@ -156,7 +156,7 @@ internal object LegacyTiConverter {
     }
 
     /**
-     * Mapping used by the pure-Kotlin preview.  It is intentionally strict:
+     * Mapping used by the pure-Kotlin preview. It is intentionally strict:
      * unknown tokens fail conversion rather than being replaced with '?'.
      * The table covers the complete token set exercised by the SNAKE test
      * program plus the common punctuation/variables that appear in it.
@@ -270,14 +270,23 @@ internal object LegacyTiConverter {
 
             val borderIndex = line.indexOf(EVO_BORDER_COLOR)
             if (borderIndex >= 0) {
-                require(borderIndex == 0) {
-                    "BorderColor in a compound statement needs manual conversion; file was not sent"
+                require(borderIndex == 0 && line.size == 2) {
+                    "BorderColor in a compound or complex statement needs manual conversion; file was not sent"
                 }
-                // Evo has no physical graph border to color.  Keep the original
-                // statement visible in the editor, but turn it into a comment so
-                // it cannot cause SYNTAX ERROR at runtime.
-                line.add(0, EVO_SPACE)
-                line.add(0, EVO_APOSTROPHE)
+                val colorToken = line[1]
+                require(colorToken in 0xE402..0xE405) {
+                    "BorderColor must use legacy border value 1 through 4; file was not sent"
+                }
+                val color = colorToken - 0xE401
+
+                // Evo has no physical graph border. A v0.17 experiment prefixed
+                // this removed command with an apostrophe, but apostrophe is a
+                // character token, not an executable TI-BASIC comment, so the
+                // unsupported BorderColor token still caused SYNTAX ERROR.
+                // Replace the whole command with a quoted source note made only
+                // from supported character tokens. This keeps the original intent
+                // visible in the editor without leaving BorderColor executable.
+                line = quotedSourceNote("BorderColor $color").toMutableList()
             }
             result += line
         }
@@ -287,10 +296,10 @@ internal object LegacyTiConverter {
 
     private fun hasClassicCeCanvas(lines: List<List<Int>>): Boolean {
         val expected = setOf(
-            listOf(0xE401, 0xE41D, 0xE98F),                         // 0 -> Xmin
-            listOf(0xE403, 0xE407, 0xE405, 0xE41D, 0xE990),       // 264 -> Xmax
-            listOf(0xE401, 0xE41D, 0xE993),                         // 0 -> Ymin
-            listOf(0xE402, 0xE407, 0xE405, 0xE41D, 0xE994)        // 164 -> Ymax
+            listOf(0xE401, 0xE41D, 0xE98F),
+            listOf(0xE403, 0xE407, 0xE405, 0xE41D, 0xE990),
+            listOf(0xE401, 0xE41D, 0xE993),
+            listOf(0xE402, 0xE407, 0xE405, 0xE41D, 0xE994)
         )
         return expected.all { target -> lines.any { it == target } }
     }
@@ -345,6 +354,24 @@ internal object LegacyTiConverter {
         val x = listOf(EVO_ADD) + numberTokens(X_OFFSET)
         line = line + x
         return line
+    }
+
+    private fun quotedSourceNote(text: String): List<Int> {
+        val result = ArrayList<Int>(text.length + 2)
+        result += EVO_QUOTE
+        for (char in text) {
+            result += when (char) {
+                ' ' -> EVO_SPACE
+                in 'A'..'Z' -> 0xE800 + (char - 'A')
+                in 'a'..'z' -> char.code
+                in '0'..'9' -> 0xE401 + (char - '0')
+                else -> throw IllegalArgumentException(
+                    "compatibility note contains unsupported character '$char'"
+                )
+            }
+        }
+        result += EVO_QUOTE
+        return result
     }
 
     private fun splitLines(tokens: List<Int>): List<List<Int>> {
