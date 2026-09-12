@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Texas Instruments TI-84 Evo: VID 0451, PID E018 -->
-    <usb-device vendor-id="1105" product-id="57368" />
+    <!-- Temporary Android USB probe: launch for any Texas Instruments USB device. -->
+    <usb-device vendor-id="1105" />
 </resources>
