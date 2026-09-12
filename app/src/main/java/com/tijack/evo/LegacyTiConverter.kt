@@ -9,8 +9,9 @@ internal object LegacyTiConverter {
         "8xv", "8xs", "8xw", "8xz", "8xt"
     )
 
-    init {
+    private val nativeReady by lazy {
         System.loadLibrary("tijack_converter")
+        true
     }
 
     fun canConvertFilename(name: String): Boolean =
@@ -23,6 +24,7 @@ internal object LegacyTiConverter {
         smart: Boolean = true
     ): ByteArray {
         require(canConvertFilename(sourceName)) { "legacy TI file type is not supported for conversion" }
+        nativeReady
         val sourceExt = sourceName.substringAfterLast('.', "8xp").lowercase()
         val input = File.createTempFile("tijack_legacy_", ".$sourceExt", cacheDir)
         val output = File.createTempFile("tijack_evo_", ".bin", cacheDir)
