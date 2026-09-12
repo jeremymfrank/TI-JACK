@@ -1,75 +1,125 @@
-# TI-JACK Android — Evo Test 0.1
+<p align="center">
+  <img src="docs/ti-jack-logo.svg" alt="TI-JACK logo" width="760">
+</p>
 
-This is the first **read-only Android hardware test** for TI-JACK.
+# TI-JACK
 
-## Scope
+**Universal file transfer for TI calculators.**
 
-Only the **TI-84 Evo** is supported in this build.
+TI-JACK is an open-source project for moving calculator variables and programs between TI calculators and modern computers or mobile devices. The current Android hardware target is the **TI-84 Evo USB protocol** (`0451:E018`), with additional calculator families planned as the project grows.
 
-The app:
+## Current status — Android v0.9
 
-1. Watches for USB VID `0451`, PID `E018`.
-2. Requests Android USB-host permission.
-3. Opens the Evo as CDC/ACM serial at 115200 baud.
-4. Performs the Evo/Kermit directory request.
-5. Decodes the returned CBOR directory.
-6. Displays variable name, type, size, and RAM/Archive state.
+The Evo Android path is now bidirectional and has been tested on real hardware.
 
-It contains **no upload, delete, OS-update, or file-writing commands** in v0.1.
+| Capability | Status |
+| --- | --- |
+| Detect Evo over Android USB host | Working |
+| Read calculator directory | Working |
+| Calculator → Android transfer | Working |
+| Android → calculator transfer | Working |
+| Multiple-file selection | Implemented |
+| Replace / skip existing files | Implemented |
+| Upload read-back verification | Working |
+| RAM / Archive display | Working |
+| Android folder picker | Working |
+| Android 15 navigation-bar safe area | Added in v0.9 |
+| Additional TI calculator families | Planned |
+
+The transfer protocol fix proven in **v0.8** sends the complete checksum-bearing Evo file, includes the variable name and type in the transfer request, and terminates the upload using the observed `S/F/A/D*/Z/B` Kermit sequence. TI-JACK then re-reads the calculator directory and downloads the uploaded variable back before reporting it as transferred.
+
+**v0.9 does not change that working upload protocol.** It adds the first TI-JACK logo/branding pass and keeps the lower transfer controls above Android 15's enforced edge-to-edge navigation area.
 
 ## What you need
 
-- Android 10 or newer.
-- A phone/tablet with USB host / OTG support.
-- TI-84 Evo.
-- A known-good USB data cable.
-- If direct USB-C host negotiation does not work, use a USB-C OTG adapter/hub.
+- Android 10 or newer (`minSdk 29`)
+- A phone or tablet with USB host / OTG support
+- A supported Evo-protocol calculator
+- A known-good USB data cable
 
-Android should display its normal USB permission prompt when the Evo is attached.
+Some Android phones initially attach the calculator in a charging-only role. If TI-JACK does not detect the calculator, open Android's USB options and select **USB controlled by connected device** so the phone enters the host role.
 
-## Build in Android Studio
+## Using the Android app
 
-Open this folder as an Android Studio project and let Gradle sync.
+1. Connect the calculator and wait for `TI-84 EVO CONNECTED`.
+2. Tap **CHOOSE FOLDER** and select the Android folder containing your calculator files.
+3. Tap one or more files in the **ANDROID** pane and choose **SEND** to copy them to the calculator.
+4. Tap one or more variables in the **CALCULATOR** pane and choose **SAVE** to copy them to Android.
+5. When a destination already contains the selected variable/file, choose **REPLACE** or **SKIP EXISTING**.
 
-The project uses:
+TI-JACK recognizes the Evo-style `.8x*2` file family used by the current protocol implementation.
 
-- compile SDK 35
-- min SDK 29 (Android 10)
-- Kotlin
+## Transfer verification
+
+TI-JACK deliberately does more than trust a transport ACK for uploads. A successful Android → calculator transfer must pass all of the following before the app counts it as transferred:
+
+1. The calculator acknowledges the Kermit upload session.
+2. The variable appears in a fresh calculator directory read.
+3. TI-JACK downloads that variable back from the calculator.
+4. The downloaded file matches the file that was sent.
+
+This behavior was added after early test builds could receive a successful transport acknowledgment without producing a visible calculator variable.
+
+## Building
+
+Open the repository as an Android Studio project and let Gradle sync.
+
+The Android app currently uses:
+
+- compile / target SDK 35
+- min SDK 29
+- Kotlin / Java 17
 - `usb-serial-for-android` 3.11.0
+- Android `DocumentFile` folder access
 
-Then build/install the `debug` APK and connect the Evo.
+Build and install the `debug` APK, then connect the calculator over USB.
 
-Expected UI:
+### GitHub Actions
 
-    ● TI-84 EVO CONNECTED
-    READY
+The included workflow is:
 
-followed by the calculator variable list.
+```text
+.github/workflows/build-debug-apk.yml
+```
 
-## GitHub Actions build option
+Every push to `main` builds the debug APK and publishes it as a workflow artifact. The v0.9 artifact is named:
 
-A workflow is included at:
+```text
+TI-JACK-Evo-Android-v0.9
+```
 
-    .github/workflows/build-debug-apk.yml
+## Protocol notes
 
-If this project is pushed to GitHub, the workflow builds `app-debug.apk`
-and publishes it as a workflow artifact. This is useful if the local machine
-does not have an Android SDK.
+The Android implementation is a native Kotlin implementation of the observed Evo USB/Kermit behavior. It does not bundle Python or invoke the desktop helper at runtime.
 
-## If it fails
+The current calculator USB identity is:
 
-The screen intentionally exposes a short diagnostic line in this test build.
-The app also writes an internal log named:
+```text
+VID 0451
+PID E018
+CDC/ACM 115200 baud
+```
 
-    ti_jack_evo_android.log
+Protocol research and implementation notes live in `PROTOCOL_NOTES.md`.
+
+## Diagnostics
+
+The app shows a short diagnostic line directly in the UI and also writes an internal log named:
+
+```text
+ti_jack_evo_android.log
+```
 
 inside the app's private files directory.
 
-For the first test, a screenshot of the error/diagnostic line is enough.
+## Roadmap
 
-## Why the protocol code is local
+The near-term work is to harden USB disconnect/reconnect behavior, finish the Android presentation and app icon, exercise batch replace/skip behavior across more variable types, and then begin adding additional TI calculator protocols behind the same transfer UI.
 
-The Android implementation is written as a small native Kotlin implementation
-of the observed Evo USB/Kermit behavior. It does not bundle Python or execute
-the desktop `evo_usb.py` helper.
+## Project direction
+
+TI-JACK is intended to become one transfer tool rather than a separate utility for every calculator generation. The UI, file-selection model, conflict handling, and verification layer are being kept calculator-agnostic while protocol-specific transports are added underneath.
+
+---
+
+TI-JACK is an independent project and is not affiliated with or endorsed by Texas Instruments.
