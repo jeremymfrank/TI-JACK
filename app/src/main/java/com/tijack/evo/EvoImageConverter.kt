@@ -10,11 +10,11 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
- * Converts ordinary Android images into TI-84 Evo background-image variables.
+ * Converts explicitly named Android images into TI-84 Evo graph-background vars.
  *
- * Evo background images are 160x105 RGB565 pixels stored bottom-to-top in an
- * .8ca2 CBOR container. Conversion intentionally uses a white letterbox canvas
- * and preserves the input aspect ratio so classroom diagrams are not distorted.
+ * Background imports are intentionally explicit now: name the source Image1,
+ * Image2, ... Image7 (extension may be png/jpg/jpeg/webp). Other still-image
+ * names are handled by ViewerMediaConverter as named IM8C AppVars.
  */
 internal object EvoImageConverter {
     const val WIDTH = 160
@@ -23,12 +23,19 @@ internal object EvoImageConverter {
 
     private val supportedExtensions = setOf("png", "jpg", "jpeg", "webp")
 
-    fun canConvertFilename(name: String): Boolean =
-        name.substringAfterLast('.', "").lowercase() in supportedExtensions
+    fun isExplicitBackgroundFilename(name: String): Boolean {
+        val extension = name.substringAfterLast('.', "").lowercase()
+        if (extension !in supportedExtensions) return false
+        val base = name.substringBeforeLast('.')
+        return Regex("(?i)^(?:image|img)[ _-]?([1-7])$").matches(base)
+    }
+
+    fun canConvertFilename(name: String): Boolean = isExplicitBackgroundFilename(name)
 
     fun preferredSlotFromFilename(name: String): Int? {
-        val base = name.substringBeforeLast('.').lowercase()
-        val match = Regex("(?:image|img)[ _-]?([1-7])").find(base) ?: return null
+        if (!isExplicitBackgroundFilename(name)) return null
+        val base = name.substringBeforeLast('.')
+        val match = Regex("(?i)^(?:image|img)[ _-]?([1-7])$").matchEntire(base) ?: return null
         return match.groupValues[1].toIntOrNull()?.takeIf { it in 1..7 }
     }
 
