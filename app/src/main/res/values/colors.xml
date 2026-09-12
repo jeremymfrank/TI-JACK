@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#11100E</color>
+    <color name="panel">#181612</color>
+    <color name="amber">#D2A62A</color>
+    <color name="amber_dim">#8E762D</color>
+    <color name="green">#69B96B</color>
+    <color name="red">#B7655E</color>
+    <color name="divider">#40371E</color>
+</resources>
