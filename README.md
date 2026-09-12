@@ -8,9 +8,9 @@
 
 TI-JACK is an open-source project for moving calculator variables and programs between TI calculators and modern computers or mobile devices. The current Android hardware target is the **TI-84 Evo USB protocol** (`0451:E018`), with additional calculator families planned as the project grows.
 
-## Current status — Android v0.9
+## Current status — Android v0.10
 
-The Evo Android path is now bidirectional and has been tested on real hardware.
+The Evo Android path is bidirectional and has been tested on real hardware.
 
 | Capability | Status |
 | --- | --- |
@@ -23,12 +23,15 @@ The Evo Android path is now bidirectional and has been tested on real hardware.
 | Upload read-back verification | Working |
 | RAM / Archive display | Working |
 | Android folder picker | Working |
-| Android 15 navigation-bar safe area | Added in v0.9 |
+| Android 15 navigation-bar safe area | Working |
+| TI-JACK adaptive launcher icon | Added in v0.10 |
+| Graceful USB release test | Added in v0.10 |
+| Unplug/replug without calculator reboot | Under investigation |
 | Additional TI calculator families | Planned |
 
 The transfer protocol fix proven in **v0.8** sends the complete checksum-bearing Evo file, includes the variable name and type in the transfer request, and terminates the upload using the observed `S/F/A/D*/Z/B` Kermit sequence. TI-JACK then re-reads the calculator directory and downloads the uploaded variable back before reporting it as transferred.
 
-**v0.9 does not change that working upload protocol.** It adds the first TI-JACK logo/branding pass and keeps the lower transfer controls above Android 15's enforced edge-to-edge navigation area.
+**v0.9** added Android navigation-bar safe-area handling. **v0.10** keeps the working transfer protocol unchanged, adds the TI-JACK launcher icon, corrects the README logo geometry, and adds a controlled USB-release test for the remaining reconnect issue.
 
 ## What you need
 
@@ -48,6 +51,22 @@ Some Android phones initially attach the calculator in a charging-only role. If 
 5. When a destination already contains the selected variable/file, choose **REPLACE** or **SKIP EXISTING**.
 
 TI-JACK recognizes the Evo-style `.8x*2` file family used by the current protocol implementation.
+
+## USB disconnect / reconnect testing
+
+Current hardware testing has shown that an abrupt cable unplug can leave the calculator unable to enumerate again until the calculator is rebooted. When Android cannot enumerate the Evo at all, the problem is below TI-JACK's application-level USB connection and the app cannot force the phone's USB-C data role.
+
+Android v0.10 adds **RELEASE USB BEFORE UNPLUG**. This intentionally closes the activity through its normal shutdown path, which closes the CDC serial port, deasserts DTR/RTS, and releases the Android USB device connection before the cable is physically removed.
+
+For the reconnect test:
+
+1. Connect normally and confirm TI-JACK is ready.
+2. Tap **RELEASE USB BEFORE UNPLUG**.
+3. Wait for the release message, then unplug the cable.
+4. Reconnect the cable without rebooting the calculator.
+5. Launch TI-JACK again if Android does not relaunch it automatically.
+
+If this allows reconnect without a calculator reboot, abrupt CDC teardown is the likely trigger. If the calculator still fails to re-enumerate, the remaining problem is likely in USB-C role negotiation or calculator USB firmware rather than the Kermit transfer session.
 
 ## Transfer verification
 
@@ -82,10 +101,10 @@ The included workflow is:
 .github/workflows/build-debug-apk.yml
 ```
 
-Every push to `main` builds the debug APK and publishes it as a workflow artifact. The v0.9 artifact is named:
+Every push to `main` builds the debug APK and publishes it as a workflow artifact. The v0.10 artifact is named:
 
 ```text
-TI-JACK-Evo-Android-v0.9
+TI-JACK-Evo-Android-v0.10
 ```
 
 ## Protocol notes
@@ -114,7 +133,7 @@ inside the app's private files directory.
 
 ## Roadmap
 
-The near-term work is to harden USB disconnect/reconnect behavior, finish the Android presentation and app icon, exercise batch replace/skip behavior across more variable types, and then begin adding additional TI calculator protocols behind the same transfer UI.
+The near-term work is to isolate the remaining USB reconnect behavior, exercise batch replace/skip behavior across more variable types, continue polishing the Android presentation, and then begin adding additional TI calculator protocols behind the same transfer UI.
 
 ## Project direction
 
