@@ -11,8 +11,8 @@ android {
         applicationId = "com.tijack.evo"
         minSdk = 29
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.8"
+        versionCode = 9
+        versionName = "0.9"
     }
 
     buildTypes {
