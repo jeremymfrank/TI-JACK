@@ -107,13 +107,24 @@ This preserves one logical graph unit per display pixel while leaving a 27-pixel
 
 The transformation is only enabled when all four exact legacy window assignments are present. TI-JACK does not assume every program should be centered.
 
-### Removed Evo commands
+### BorderColor compatibility
 
-The Evo token table still contains `TOK_BORDER_COLOR` (`E5BA`), but real-hardware testing showed a converted `BorderColor 2` statement produces `SYNTAX ERROR`. The Evo has no physical graph border corresponding to the older color-calculator feature.
+The Evo token table still contains `TOK_BORDER_COLOR` (`E5BA`), but real-hardware testing showed a converted `BorderColor 2` statement produces `SYNTAX ERROR`. The Evo has no CE-style physical graph border corresponding to that command.
 
-The first v0.17 fidelity attempt prefixed the line with `TOK_APOST`, assuming it behaved as an executable comment. Hardware testing disproved that assumption: the apostrophe is a character token, so the interpreter still reached the unsupported `BorderColor` token.
+v0.17 first tried prefixing the line with an apostrophe, which hardware testing showed was not an executable comment. v0.17.1 removed the unsupported token entirely and replaced it with a quoted source note. That stopped the syntax error but did not preserve the visual behavior, and a standalone string can also affect `Ans`.
 
-v0.17.1 replaces the **entire** standalone `BorderColor 1`–`4` command with a quoted source-note string made only from supported character tokens, for example `"BorderColor 2"`. That keeps the original intent visible in the editor while ensuring the unsupported token is absent from executable code. Compound or complex `BorderColor` expressions are still refused instead of guessed.
+v0.17.2 therefore treats `BorderColor` as a visual compatibility transform instead of a source note. When TI-JACK has positively identified the classic 265 × 165 CE canvas, a standalone `BorderColor 1`–`4` line is replaced by eight normal Evo `Line(` commands: two one-pixel rectangles immediately outside the legacy `0..264 × 0..164` drawing area. The frame lives entirely in the new centered margins, so it does not overwrite the program's original drawing coordinates.
+
+Drawable-color mapping is conservative:
+
+- CE border 1 (Light Gray) → Evo draw color 21 (LTGRAY)
+- CE border 2 (Snowy Mint / Light Madang) → Evo draw color 21 (LTGRAY approximation)
+- CE border 3 (Light Blue) → Evo draw color 18 (LTBLUE)
+- CE border 4 (White) → Evo draw color 20 (WHITE)
+
+CE border color 2 is a special border-only color and has no ordinary TI-BASIC draw-color equivalent, so exact color reproduction is not possible through normal `Line(` drawing. TI-JACK preserves geometry and uses the closest conservative palette approximation rather than pretending the color is exact.
+
+If `BorderColor` appears in a compound expression or in a program whose legacy canvas cannot be identified safely, conversion is refused instead of silently deleting the feature.
 
 ### Evo background image container
 

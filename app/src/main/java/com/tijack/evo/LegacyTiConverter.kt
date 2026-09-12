@@ -16,13 +16,13 @@ internal object LegacyTiConverter {
     private const val LEGACY_PROTECTED_PROGRAM = 0x06
 
     private const val EVO_NEW_LINE = 0xE41C
-    private const val EVO_QUOTE = 0xE416
-    private const val EVO_SPACE = 0xE419
     private const val EVO_ADD = 0xE428
     private const val EVO_CHS = 0xE42E
     private const val EVO_COMMA = 0xE417
+    private const val EVO_RPAREN = 0xE411
     private const val EVO_TEXT = 0xE4F5
     private const val EVO_PXL_TEST = 0xE4F2
+    private const val EVO_LINE = 0xE4EB
     private const val EVO_BORDER_COLOR = 0xE5BA
 
     // TI-84 Plus CE graph canvas dimensions used by programs such as SNAKE.
@@ -30,6 +30,8 @@ internal object LegacyTiConverter {
     // 27 pixels horizontally and 22 pixels vertically.
     private const val X_OFFSET = 27
     private const val Y_OFFSET = 22
+    private const val CE_X_MAX = 264
+    private const val CE_Y_MAX = 164
 
     private val twoBytePrefixes = setOf(
         0x5C, 0x5D, 0x5E, 0x60, 0x61, 0x62, 0x63, 0x7E, 0xAA, 0xBB, 0xEF
@@ -278,20 +280,65 @@ internal object LegacyTiConverter {
                     "BorderColor must use legacy border value 1 through 4; file was not sent"
                 }
                 val color = colorToken - 0xE401
+                require(centered) {
+                    "BorderColor $color needs a recognized legacy graph canvas for safe Evo emulation; file was not sent"
+                }
 
-                // Evo has no physical graph border. A v0.17 experiment prefixed
-                // this removed command with an apostrophe, but apostrophe is a
-                // character token, not an executable TI-BASIC comment, so the
-                // unsupported BorderColor token still caused SYNTAX ERROR.
-                // Replace the whole command with a quoted source note made only
-                // from supported character tokens. This keeps the original intent
-                // visible in the editor without leaving BorderColor executable.
-                line = quotedSourceNote("BorderColor $color").toMutableList()
+                // The Evo has no CE-style physical graph border. For a recognized
+                // 265x165 CE canvas, emulate that visual intent without touching
+                // the legacy drawing area: draw a two-pixel frame immediately
+                // outside x=0..264 and y=0..164 in the centered Evo margins.
+                // Border colors 2 and 3 are CE-only special colors; 2 (Snowy Mint)
+                // has no normal draw-color equivalent, so use LTGRAY as the closest
+                // conservative palette approximation rather than changing game data.
+                result.addAll(classicCeBorderLines(color))
+                continue
             }
             result += line
         }
 
         return joinLines(result)
+    }
+
+    private fun classicCeBorderLines(borderColor: Int): List<List<Int>> {
+        val drawColor = when (borderColor) {
+            1 -> 21 // CE BorderColor 1: Light Gray -> LTGRAY
+            2 -> 21 // CE-only Snowy Mint; nearest conservative draw approximation
+            3 -> 18 // CE BorderColor 3: Light Blue -> LTBLUE
+            4 -> 20 // CE BorderColor 4: White -> WHITE
+            else -> error("unsupported BorderColor value")
+        }
+
+        val result = ArrayList<List<Int>>(8)
+        for (offset in 1..2) {
+            val left = -offset
+            val right = CE_X_MAX + offset
+            val bottom = -offset
+            val top = CE_Y_MAX + offset
+            result += lineCommand(left, bottom, right, bottom, drawColor)
+            result += lineCommand(right, bottom, right, top, drawColor)
+            result += lineCommand(right, top, left, top, drawColor)
+            result += lineCommand(left, top, left, bottom, drawColor)
+        }
+        return result
+    }
+
+    private fun lineCommand(
+        x1: Int,
+        y1: Int,
+        x2: Int,
+        y2: Int,
+        color: Int
+    ): List<Int> {
+        val arguments = listOf(x1, y1, x2, y2, 1, color, 1)
+        val result = ArrayList<Int>(24)
+        result += EVO_LINE
+        arguments.forEachIndexed { index, value ->
+            result.addAll(numberTokens(value))
+            if (index != arguments.lastIndex) result += EVO_COMMA
+        }
+        result += EVO_RPAREN
+        return result
     }
 
     private fun hasClassicCeCanvas(lines: List<List<Int>>): Boolean {
@@ -354,24 +401,6 @@ internal object LegacyTiConverter {
         val x = listOf(EVO_ADD) + numberTokens(X_OFFSET)
         line = line + x
         return line
-    }
-
-    private fun quotedSourceNote(text: String): List<Int> {
-        val result = ArrayList<Int>(text.length + 2)
-        result += EVO_QUOTE
-        for (char in text) {
-            result += when (char) {
-                ' ' -> EVO_SPACE
-                in 'A'..'Z' -> 0xE800 + (char - 'A')
-                in 'a'..'z' -> char.code
-                in '0'..'9' -> 0xE401 + (char - '0')
-                else -> throw IllegalArgumentException(
-                    "compatibility note contains unsupported character '$char'"
-                )
-            }
-        }
-        result += EVO_QUOTE
-        return result
     }
 
     private fun splitLines(tokens: List<Int>): List<List<Int>> {

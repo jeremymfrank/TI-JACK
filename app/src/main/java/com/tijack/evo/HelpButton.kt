@@ -56,7 +56,8 @@ class HelpButton @JvmOverloads constructor(
         • Current Evo files transfer normally.
         • Legacy .8xp conversion is available as a pure-Kotlin preview; no native converter is included.
         • Programs using the classic 265 × 165 CE graph canvas are centered on the Evo when TI-JACK can identify that layout safely.
-        • Evo has no physical graph border to color. BorderColor statements are replaced with a quoted source note so the original intent remains visible without executing the removed command.
+        • CE BorderColor has no direct Evo equivalent. On a recognized classic canvas, TI-JACK emulates it with a frame outside the program's original drawing area. BorderColor 2 uses light gray as the closest safe Evo drawing-color approximation to the CE-only Snowy Mint border.
+        • If a BorderColor program does not expose a safe legacy canvas to emulate, conversion is refused instead of silently removing the visual feature.
         • PNG, JPG, JPEG, and WebP images are converted to Evo Image1–Image7 background images while preserving proportions.
         • A token or layout TI-JACK cannot convert safely is refused instead of guessed.
 

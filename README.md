@@ -8,9 +8,9 @@
 
 TI-JACK is an open-source project for moving calculator variables and programs between TI calculators and modern computers or mobile devices. The current Android hardware target is the **TI-84 Evo USB protocol** (`0451:E018`), with additional calculator families planned as the project grows.
 
-## Current status — Android v0.17.1
+## Current status — Android v0.17.2
 
-The Evo Android path is bidirectional and has been tested on real hardware. v0.17 restored legacy TI-BASIC `.8xp` conversion with a **pure-Kotlin, strict conversion preview** and added an Evo fidelity pass for programs written around the older CE graph canvas. v0.17.1 fixes the first hardware-test compatibility note so a removed `BorderColor` statement is no longer left behind as an executable token.
+The Evo Android path is bidirectional and has been tested on real hardware. v0.17 restored legacy TI-BASIC `.8xp` conversion with a **pure-Kotlin, strict conversion preview** and added an Evo fidelity pass for programs written around the older CE graph canvas. v0.17.1 removed the unsupported `BorderColor` token after hardware testing showed it still produced `SYNTAX ERROR`. v0.17.2 goes further and visually emulates supported standalone `BorderColor` statements on a recognized classic CE canvas instead of simply removing the effect.
 
 | Capability | Status |
 | --- | --- |
@@ -30,6 +30,7 @@ The Evo Android path is bidirectional and has been tested on real hardware. v0.1
 | In-app `?` help / version / connection tips | Working |
 | Legacy `.8xp` → Evo `.8xp2` conversion | Pure-Kotlin preview; hardware testing in progress |
 | Classic 265 × 165 CE canvas centering | Implemented when the layout can be identified safely |
+| CE `BorderColor` visual emulation | Implemented for standalone 1–4 on recognized classic canvas |
 | PNG / JPG / JPEG / WebP → Evo background image | Implemented; hardware testing in progress |
 | Manual release-USB button | Removed; normal detach is automatic |
 | USB-C OTG adapter + USB-A-to-C data cable | Working repeatedly on tested Samsung + Evo |
@@ -89,14 +90,16 @@ The conversion priority is:
 1. preserve the original operation directly when Evo supports it,
 2. translate or emulate changed features where that can be done safely,
 3. preserve the original logical canvas and **center it** when stretching would alter hard-coded drawing/collision coordinates,
-4. retain a visible source note and avoid executing a removed command when there is no exact Evo equivalent,
-5. refuse conversion rather than silently remove behavior that could change program logic.
+4. keep compatibility transforms outside the program's original drawing/logic area whenever possible,
+5. refuse conversion rather than silently remove behavior that could change program logic or appearance.
 
 The first hardware fidelity target is the uploaded **SNAKE.8xp** program. It explicitly sets the classic color-calculator graph window to `0..264` by `0..164` and uses matching `Text(` / `pxl-Test(` coordinates. The converter detects that exact layout and centers the 265 × 165 logical canvas inside the Evo's larger graph area instead of stretching it. Graph-coordinate drawing remains in the legacy coordinate system, while pixel-based text/collision coordinates receive the matching center offset.
 
-`BorderColor` is a special case. The Evo removed the old physical graph border, so there is no exact border-color target. v0.17 attempted to retain `BorderColor 2` by prefixing the command with an apostrophe. Real-hardware testing showed that this was wrong: the apostrophe is a character token, not an executable comment, so the Evo still reached the unsupported `BorderColor` token and raised `SYNTAX ERROR`.
+`BorderColor` is a special case. The Evo removed the old CE physical graph border, so the original command itself cannot execute. Real-hardware testing confirmed that leaving the `BorderColor` token in the converted program produces `SYNTAX ERROR`.
 
-v0.17.1 replaces the **entire** removed command with a quoted source-note string such as `"BorderColor 2"`, constructed only from supported character tokens. The original intent remains visible when the program is inspected, but the unsupported Evo token is no longer present in executable code. This is intentionally separate from visual emulation: the CE's Snowy Mint border color has no direct Evo drawing-color equivalent, so TI-JACK does not substitute a guessed color. SNAKE's own in-game frame remains active and centered with the game canvas.
+v0.17.2 treats this as a visual compatibility transform. For a program whose classic 265 × 165 canvas has been positively identified, a standalone `BorderColor 1`–`4` line is replaced by two one-pixel `Line(` rectangles drawn immediately **outside** the original `0..264 × 0..164` canvas. The emulated frame lives in the new Evo margins and therefore does not overwrite the program's original graphics, text, collision coordinates, or gameplay area.
+
+The CE border palette is not identical to the normal draw-color palette. TI-JACK maps Light Gray to LTGRAY, Light Blue to LTBLUE, and White to WHITE. CE `BorderColor 2` uses the special Snowy Mint / Light Madang border-only color, which is not available as a normal TI-BASIC line color; v0.17.2 uses LTGRAY as a conservative visual approximation rather than claiming an exact color match. If `BorderColor` is used in a compound statement or TI-JACK cannot safely identify the legacy canvas, conversion is refused instead of deleting the feature.
 
 This is a preview, not a claim that every `.8xp` is already portable. A program using an unverified token or a layout TI-JACK cannot transform safely is refused instead of being sent as a questionable conversion.
 
@@ -156,7 +159,7 @@ The Android app currently uses:
 - Kotlin / Java 17
 - `usb-serial-for-android` 3.11.0
 - Android `DocumentFile` folder access
-- pure-Kotlin Evo/legacy conversion code; **no native converter or NDK is required in v0.17.1**
+- pure-Kotlin Evo/legacy conversion code; **no native converter or NDK is required in v0.17.2**
 
 Conversion happens locally on the phone and requires no Internet connection.
 
@@ -171,7 +174,7 @@ The included workflow is:
 Every push to `main` builds the debug APK and publishes it as:
 
 ```text
-TI-JACK-Evo-Android-v0.17.1
+TI-JACK-Evo-Android-v0.17.2
 ```
 
 ## Protocol notes
@@ -194,13 +197,13 @@ The app shows short user-facing status guidance directly in the UI and writes an
 
 ## Credits
 
-TI-JACK project: **Jawatech / jeremymfrank**. Android USB serial support is provided by the open-source `usb-serial-for-android` library. The legacy/Evo format work was cross-checked against the MIT-licensed `tivars_lib_cpp` Evo research by Adrien "Adriweb" Bertrand; v0.17.1 does **not** bundle that native library. See `THIRD_PARTY_NOTICES.md`.
+TI-JACK project: **Jawatech / jeremymfrank**. Android USB serial support is provided by the open-source `usb-serial-for-android` library. The legacy/Evo format work was cross-checked against the MIT-licensed `tivars_lib_cpp` Evo research by Adrien "Adriweb" Bertrand; v0.17.2 does **not** bundle that native library. See `THIRD_PARTY_NOTICES.md`.
 
 TI-JACK is an independent project and is not affiliated with or endorsed by Texas Instruments.
 
 ## Roadmap
 
-Near-term work includes expanding the pure-Kotlin token compatibility table from real program tests, improving compatibility/emulation notes, validating image import on hardware, adding image preview/crop controls, and adding additional TI calculator protocols behind the same transfer UI.
+Near-term work includes expanding the pure-Kotlin token compatibility table from real program tests, improving compatibility/emulation fidelity, validating image import on hardware, adding image preview/crop controls, and adding additional TI calculator protocols behind the same transfer UI.
 
 ## Project direction
 
