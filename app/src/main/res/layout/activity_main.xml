@@ -5,28 +5,28 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="@color/bg"
-    android:paddingStart="18dp"
-    android:paddingEnd="18dp"
-    android:paddingTop="18dp"
-    android:paddingBottom="10dp">
+    android:paddingStart="14dp"
+    android:paddingEnd="14dp"
+    android:paddingTop="14dp"
+    android:paddingBottom="8dp">
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="TI-JACK"
         android:textColor="@color/amber"
-        android:textSize="30sp"
+        android:textSize="28sp"
         android:textStyle="bold"
         android:gravity="center" />
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="EVO / ANDROID TEST 0.1"
+        android:text="EVO / ANDROID TRANSFER TEST 0.4"
         android:textColor="@color/amber_dim"
-        android:textSize="12sp"
+        android:textSize="11sp"
         android:gravity="center"
-        android:layout_marginBottom="18dp" />
+        android:layout_marginBottom="10dp" />
 
     <TextView
         android:id="@+id/connectionStatus"
@@ -34,7 +34,7 @@
         android:layout_height="wrap_content"
         android:text="● SEARCHING..."
         android:textColor="@color/amber"
-        android:textSize="17sp"
+        android:textSize="16sp"
         android:textStyle="bold"
         android:gravity="center" />
 
@@ -44,9 +44,9 @@
         android:layout_height="wrap_content"
         android:text="SEARCHING..."
         android:textColor="@color/amber"
-        android:textSize="14sp"
+        android:textSize="13sp"
         android:gravity="center"
-        android:layout_marginTop="4dp" />
+        android:layout_marginTop="2dp" />
 
     <TextView
         android:id="@+id/diagnostic"
@@ -54,11 +54,20 @@
         android:layout_height="wrap_content"
         android:text=""
         android:textColor="@color/amber_dim"
-        android:textSize="10sp"
+        android:textSize="9sp"
         android:gravity="center"
         android:maxLines="3"
-        android:layout_marginTop="5dp"
-        android:layout_marginBottom="16dp" />
+        android:layout_marginTop="3dp"
+        android:layout_marginBottom="7dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="TAP ANDROID FILE → EVO   ·   TAP CALCULATOR FILE → ANDROID"
+        android:textColor="@color/amber_dim"
+        android:textSize="8sp"
+        android:gravity="center"
+        android:layout_marginBottom="7dp" />
 
     <View
         android:layout_width="match_parent"
@@ -69,8 +78,79 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:paddingTop="10dp"
-        android:paddingBottom="8dp">
+        android:gravity="center_vertical"
+        android:paddingTop="5dp"
+        android:paddingBottom="4dp">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="ANDROID"
+                android:textColor="@color/amber"
+                android:textStyle="bold"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/computerFolder"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="NO FOLDER SELECTED"
+                android:textColor="@color/amber_dim"
+                android:textSize="9sp"
+                android:maxLines="1"
+                android:ellipsize="middle" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/chooseFolder"
+            android:layout_width="wrap_content"
+            android:layout_height="38dp"
+            android:text="CHOOSE FOLDER"
+            android:textSize="10sp"
+            android:textColor="@color/bg"
+            android:backgroundTint="@color/amber"
+            android:minHeight="0dp"
+            android:minWidth="0dp"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp" />
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="0.42"
+        android:fillViewport="true"
+        android:background="@color/panel">
+
+        <LinearLayout
+            android:id="@+id/computerList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="7dp"
+            android:paddingEnd="7dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp" />
+    </ScrollView>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="7dp"
+        android:background="@color/divider" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingTop="5dp"
+        android:paddingBottom="4dp">
 
         <TextView
             android:layout_width="0dp"
@@ -79,43 +159,43 @@
             android:text="CALCULATOR"
             android:textColor="@color/amber"
             android:textStyle="bold"
-            android:textSize="15sp" />
+            android:textSize="14sp" />
 
         <TextView
-            android:layout_width="80dp"
+            android:layout_width="76dp"
             android:layout_height="wrap_content"
             android:text="SIZE"
             android:textColor="@color/amber"
             android:textStyle="bold"
-            android:textSize="12sp"
+            android:textSize="10sp"
             android:gravity="end" />
 
         <TextView
-            android:layout_width="48dp"
+            android:layout_width="43dp"
             android:layout_height="wrap_content"
             android:text="MEM"
             android:textColor="@color/amber"
             android:textStyle="bold"
-            android:textSize="12sp"
+            android:textSize="10sp"
             android:gravity="end" />
     </LinearLayout>
 
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
+        android:layout_weight="0.58"
         android:fillViewport="true"
         android:background="@color/panel">
 
         <LinearLayout
-            android:id="@+id/fileList"
+            android:id="@+id/calculatorList"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
-            android:paddingTop="4dp"
-            android:paddingBottom="4dp" />
+            android:paddingStart="7dp"
+            android:paddingEnd="7dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp" />
     </ScrollView>
 
     <TextView
@@ -123,9 +203,9 @@
         android:layout_height="wrap_content"
         android:text="SCHOOL PROPERTY"
         android:textColor="@color/amber_dim"
-        android:textSize="11sp"
+        android:textSize="10sp"
         android:textStyle="bold"
         android:gravity="center"
-        android:paddingTop="10dp" />
+        android:paddingTop="6dp" />
 
 </LinearLayout>
