@@ -51,7 +51,7 @@ The reliable battery-powered field setup is:
 Phone → USB-C OTG/host adapter → USB-A-to-USB-C data cable → TI-84 Evo
 ```
 
-No external power is required. A slim USB-C OTG adapter has also been tested successfully and is more practical with a phone case. The OTG adapter must be on the **phone side**. A real USB hub also establishes the correct host role and works reliably, but the hub is not required once a known-good OTG/host adapter is used.
+No external power is required. A slim USB-C OTG adapter has also been tested successfully and is more practical with a phone case. The OTG adapter must be on the **phone side**. A powered USB hub also establishes the correct host role and works reliably.
 
 Android's public `UsbManager` API lets TI-JACK communicate with the calculator only after Android is already in USB host mode. A normal third-party app cannot force the phone's USB-C host/device role itself.
 
