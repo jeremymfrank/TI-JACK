@@ -91,13 +91,6 @@ jobs:
               ''
           )
 
-          # Artifact/version naming.
-          replace_once(
-              ".github/workflows/build-debug-apk.yml",
-              '          name: TI-JACK-Evo-Android-v0.16\n',
-              '          name: TI-JACK-Evo-Android-v0.16.1\n'
-          )
-
           # README: make the Play Protect response explicit and avoid claiming
           # legacy conversion is available in the current artifact.
           p = Path("README.md")
@@ -105,7 +98,6 @@ jobs:
           text = text.replace('## Current status — Android v0.16', '## Current status — Android v0.16.1')
           text = text.replace('| Legacy TI variable conversion (`.8xp`, lists, matrices, etc.) | Working through bundled `tivars_lib_cpp` |', '| Legacy TI variable conversion (`.8xp`, lists, matrices, etc.) | Temporarily paused in v0.16.1 while the native converter is replaced |')
           text = text.replace('Older compatible TI variable files are converted locally on the phone to Evo format before upload. The conversion engine is a pinned Evo-capable build of the MIT-licensed `tivars_lib_cpp`; TI-JACK validates the converted file with its Evo parser before it is allowed onto the USB transfer path.', 'v0.16 briefly shipped a native C++ legacy-file converter. A Samsung/Google Play Protect scan then classified that APK as harmful even though the app manifest declares no SMS, call-log, microphone, camera, contacts, broad-storage, or Internet permissions. v0.16.1 removes the native converter from the APK while that false-positive path is investigated. Native Evo transfer and image conversion remain available.')
-          text = text.replace('TI-JACK-Evo-Android-v0.16', 'TI-JACK-Evo-Android-v0.16.1')
           p.write_text(text)
 
           # Third-party notices: tivars_lib_cpp is no longer bundled in current APK.
@@ -114,7 +106,6 @@ jobs:
 
           git rm -f app/src/main/java/com/tijack/evo/LegacyTiConverter.kt
           git rm -f app/src/main/cpp/CMakeLists.txt app/src/main/cpp/tijack_converter.cpp
-          rm -f .github/workflows/hotfix-v0161-play-protect.yml
 
       - name: Commit hotfix
         run: |
