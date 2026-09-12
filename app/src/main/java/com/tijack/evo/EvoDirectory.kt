@@ -4,7 +4,8 @@ internal data class EvoEntry(
     val name: String,
     val type: Int,
     val size: Long,
-    val archived: Boolean
+    val archived: Boolean,
+    val tokenName: ByteArray
 )
 
 internal object EvoDirectory {
@@ -20,8 +21,9 @@ internal object EvoDirectory {
             val type = number(item["type"]).toInt()
             val size = number(item["size"])
             val archived = item["mem"] as? Boolean ?: false
+            val tokenName = item["tokName"] as? ByteArray ?: byteArrayOf()
             val name = displayName(item, type)
-            EvoEntry(name, type, size, archived)
+            EvoEntry(name, type, size, archived, tokenName)
         }
     }
 
