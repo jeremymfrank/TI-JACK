@@ -18,6 +18,9 @@ internal object Kermit {
         var repeatQuote: Int = REPT,
         var maxPacketLength: Int = 2040
     ) {
+        val dataChunkSize: Int
+            get() = maxOf(1, minOf(2000, maxPacketLength - checkType - 8))
+
         fun updateFromSendInit(data: ByteArray) {
             if (data.size > 5 && u(data[5]) != 0x20) {
                 controlQuote = u(data[5])
@@ -60,6 +63,73 @@ internal object Kermit {
             tag.code.toByte(),
             tochar(valueBytes.size).toByte()
         ) + valueBytes
+    }
+
+    fun encode(data: ByteArray): ByteArray {
+        val out = ByteArrayOutputStream()
+        var index = 0
+        while (index < data.size) {
+            var run = 1
+            while (
+                index + run < data.size &&
+                data[index + run] == data[index] &&
+                run < 94
+            ) {
+                run++
+            }
+
+            val encoded = encodeByte(u(data[index]))
+            if (run >= 3) {
+                out.write(REPT)
+                out.write(tochar(run))
+                out.write(encoded)
+            } else {
+                repeat(run) {
+                    out.write(encoded)
+                }
+            }
+            index += run
+        }
+        return out.toByteArray()
+    }
+
+    fun splitEncoded(
+        wire: ByteArray,
+        chunkSize: Int
+    ): List<ByteArray> {
+        require(chunkSize > 0)
+        if (wire.isEmpty()) return emptyList()
+
+        val chunks = ArrayList<ByteArray>()
+        var pos = 0
+        var chunkStart = 0
+
+        while (pos < wire.size) {
+            when {
+                u(wire[pos]) == REPT && pos + 2 < wire.size -> {
+                    pos += 2
+                    if (u(wire[pos]) == QCTL && pos + 1 < wire.size) {
+                        pos += 2
+                    } else {
+                        pos += 1
+                    }
+                }
+                u(wire[pos]) == QCTL && pos + 1 < wire.size -> {
+                    pos += 2
+                }
+                else -> pos += 1
+            }
+
+            if (pos - chunkStart >= chunkSize) {
+                chunks += wire.copyOfRange(chunkStart, pos)
+                chunkStart = pos
+            }
+        }
+
+        if (chunkStart < wire.size) {
+            chunks += wire.copyOfRange(chunkStart, wire.size)
+        }
+        return chunks
     }
 
     fun makePacket(
@@ -204,6 +274,19 @@ internal object Kermit {
         }
 
         return out.toByteArray()
+    }
+
+    private fun encodeByte(value: Int): ByteArray {
+        val low = value and 0x7F
+        return when {
+            low < 0x20 || low == 0x7F ->
+                byteArrayOf(QCTL.toByte(), (value xor 0x40).toByte())
+            value == QCTL ->
+                byteArrayOf(QCTL.toByte(), QCTL.toByte())
+            value == REPT ->
+                byteArrayOf(QCTL.toByte(), REPT.toByte())
+            else -> byteArrayOf(value.toByte())
+        }
     }
 
     private fun blockCheck(data: ByteArray, type: Int): ByteArray =
