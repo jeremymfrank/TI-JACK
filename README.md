@@ -8,7 +8,7 @@
 
 TI-JACK is an open-source project for moving calculator variables and programs between TI calculators and modern computers or mobile devices. The current Android hardware target is the **TI-84 Evo USB protocol** (`0451:E018`), with additional calculator families planned as the project grows.
 
-## Current status — Android v0.13
+## Current status — Android v0.15.1
 
 The Evo Android path is bidirectional and has been tested on real hardware.
 
@@ -18,16 +18,20 @@ The Evo Android path is bidirectional and has been tested on real hardware.
 | Read calculator directory | Working |
 | Calculator → Android transfer | Working |
 | Android → calculator transfer | Working |
-| Multiple-file selection | Implemented |
-| Replace / skip existing files | Implemented |
+| Multiple-file selection | Working |
+| Select All / Clear selection | Working |
+| Replace / skip existing files | Working |
+| Android-side file deletion | Working |
+| Calculator-side variable deletion | Working and verified on hardware |
 | Upload read-back verification | Working |
 | RAM / Archive display | Working |
 | Android folder picker | Working |
-| Android 15 status-bar / camera-cutout / navigation safe area | Added in v0.13 |
-| In-app `?` help / version / connection tips | Added in v0.13 |
-| Manual release-USB button | Removed in v0.13; normal detach is automatic |
+| Android 15 status-bar / camera-cutout / navigation safe area | Working |
+| In-app `?` help / version / connection tips | Working |
+| Manual release-USB button | Removed; normal detach is automatic |
 | USB-C OTG adapter + USB-A-to-C data cable | Working repeatedly on tested Samsung + Evo |
 | Direct USB-C-to-C on tested Samsung + Evo | USB role mismatch; see connection notes below |
+| Legacy `.8xp` → Evo conversion | Planned |
 | Additional TI calculator families | Planned |
 
 The transfer protocol fix proven in **v0.8** sends the complete checksum-bearing Evo file, includes the variable name and type in the transfer request, and terminates the upload using the observed `S/F/A/D*/Z/B` Kermit sequence. TI-JACK then re-reads the calculator directory and downloads the uploaded variable back before reporting it as transferred.
@@ -47,20 +51,22 @@ The reliable battery-powered field setup is:
 Phone → USB-C OTG/host adapter → USB-A-to-USB-C data cable → TI-84 Evo
 ```
 
-No external power is required. A real USB hub also establishes the correct host role and works reliably, but the hub is not required once a known-good OTG/host adapter is used.
+No external power is required. A slim USB-C OTG adapter has also been tested successfully and is more practical with a phone case. The OTG adapter must be on the **phone side**. A real USB hub also establishes the correct host role and works reliably, but the hub is not required once a known-good OTG/host adapter is used.
 
 Android's public `UsbManager` API lets TI-JACK communicate with the calculator only after Android is already in USB host mode. A normal third-party app cannot force the phone's USB-C host/device role itself.
 
 ## Using the Android app
 
-1. Connect the calculator and wait for `TI-84 EVO CONNECTED`.
+1. Plug the USB adapter into the phone, connect the calculator, and wait for `TI-84 EVO CONNECTED`.
 2. Tap **CHOOSE FOLDER** and select the Android folder containing your calculator files.
-3. Tap one or more files in the **ANDROID** pane and choose **SEND** to copy them to the calculator.
-4. Tap one or more variables in the **CALCULATOR** pane and choose **SAVE** to copy them to Android.
-5. When a destination already contains the selected variable/file, choose **REPLACE** or **SKIP EXISTING**.
-6. Tap the **?** in the upper-right for the installed version, credits, and connection tips.
+3. Tap one or more files in the **ANDROID** pane and choose **TRANSMIT →** to copy them to the calculator.
+4. Tap one or more variables in the **CALCULATOR** pane and choose **← TRANSMIT** to copy them to Android.
+5. Use **SELECT ALL** or **CLEAR** to manage groups of selected items.
+6. Use **DELETE** on either pane to remove the selected Android files or calculator variables. TI-JACK asks for confirmation before deletion.
+7. When a destination already contains the selected variable/file, choose **REPLACE** or **SKIP EXISTING**.
+8. Tap the **?** in the upper-right for the installed version, credits, and connection tips.
 
-TI-JACK recognizes the Evo-style `.8x*2` file family used by the current protocol implementation. Legacy `.8xp` files are not directly interchangeable with Evo `.8xp2` files.
+TI-JACK recognizes the Evo-style `.8x*2` file family used by the current protocol implementation. Legacy `.8xp` files are not directly interchangeable with Evo `.8xp2` files; proper conversion support is planned rather than simple extension renaming.
 
 ### USB connection notes
 
@@ -71,9 +77,12 @@ On the tested Samsung phone:
 - Manually changing to **Connected device** makes TI-JACK work, but repeated role swaps can wedge the Samsung USB stack until reboot.
 - A genuine USB-C OTG/host adapter correctly puts the phone in host mode from initial attachment.
 - With that OTG adapter and a known-good USB-A-to-C data cable, the Evo reconnects automatically and TI-JACK's transfer functions work normally.
+- Putting the OTG adapter on the calculator side does not establish the needed phone host role.
 - A USB hub produces the same good host-mode behavior and is useful as a diagnostic, but it is not required for field use.
 
-Do not unplug during an active transfer. Once a transfer completes, normal physical disconnect/reconnect is supported; there is no manual **RELEASE USB** step in v0.13.
+The app's disconnected message is intentionally written for nontechnical users: **Make sure the USB adapter is plugged into your phone, then reconnect the calculator.**
+
+Do not unplug during an active transfer. Once a transfer completes, normal physical disconnect/reconnect is supported; there is no manual **RELEASE USB** step.
 
 ## Transfer verification
 
@@ -85,6 +94,8 @@ TI-JACK deliberately does more than trust a transport ACK for uploads. A success
 4. The downloaded file matches the file that was sent.
 
 This behavior was added after early test builds could receive a successful transport acknowledgment without producing a visible calculator variable.
+
+Calculator-side deletion is also verified by re-reading the calculator directory after the delete transaction before reporting success.
 
 ## Building
 
@@ -111,7 +122,7 @@ The included workflow is:
 Every push to `main` builds the debug APK and publishes it as a workflow artifact named:
 
 ```text
-TI-JACK-Evo-Android-v0.13
+TI-JACK-Evo-Android-v0.15.1
 ```
 
 ## Protocol notes
@@ -130,7 +141,7 @@ Protocol research and implementation notes live in `PROTOCOL_NOTES.md`.
 
 ## Diagnostics
 
-The app shows a short diagnostic line directly in the UI and also writes an internal log named:
+The app shows short user-facing status guidance directly in the UI and also writes an internal log named:
 
 ```text
 ti_jack_evo_android.log
@@ -146,8 +157,8 @@ TI-JACK is an independent project and is not affiliated with or endorsed by Texa
 
 ## Roadmap
 
-Near-term work includes improving direct USB-C role compatibility across Android devices, expanding connection diagnostics, exercising batch replace/skip behavior across more variable types, and adding additional TI calculator protocols behind the same transfer UI.
+Near-term work includes proper legacy TI file conversion beginning with `.8xp` → Evo-compatible `.8xp2`, expanding support across more variable types, improving connection diagnostics where useful, and adding additional TI calculator protocols behind the same transfer UI.
 
 ## Project direction
 
-TI-JACK is intended to become one transfer tool rather than a separate utility for every calculator generation. The UI, file-selection model, conflict handling, and verification layer are being kept calculator-agnostic while protocol-specific transports are added underneath.
+TI-JACK is intended to become one transfer tool rather than a separate utility for every calculator generation. The UI, file-selection model, conflict handling, deletion workflow, and verification layer are being kept calculator-agnostic while protocol-specific transports are added underneath.
