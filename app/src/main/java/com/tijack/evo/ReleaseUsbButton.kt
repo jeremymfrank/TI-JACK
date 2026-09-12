@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.util.AttributeSet
 import android.widget.Button
+import android.widget.TextView
 import android.widget.Toast
 
 /**
@@ -21,13 +22,29 @@ class ReleaseUsbButton @JvmOverloads constructor(
 
     init {
         setOnClickListener {
+            val activity = context as? Activity ?: return@setOnClickListener
+            val status = activity.findViewById<TextView?>(R.id.operationStatus)
+                ?.text
+                ?.toString()
+                .orEmpty()
+            if (status.contains("TRANSFERRING", ignoreCase = true) ||
+                status.contains("CONNECTING", ignoreCase = true)
+            ) {
+                Toast.makeText(
+                    context,
+                    "WAIT FOR THE CURRENT USB OPERATION TO FINISH",
+                    Toast.LENGTH_SHORT
+                ).show()
+                return@setOnClickListener
+            }
+
             isEnabled = false
+            activity.finish()
             Toast.makeText(
                 context,
                 "USB RELEASED — UNPLUG CALCULATOR NOW",
                 Toast.LENGTH_LONG
             ).show()
-            (context as? Activity)?.finish()
         }
     }
 }
