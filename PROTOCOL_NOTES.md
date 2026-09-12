@@ -53,7 +53,7 @@ TI-JACK does not treat the transport acknowledgment alone as success. After uplo
 
 Calculator-side delete uses the Evo variable-delete transaction implemented in `EvoUsbClient.deleteVariable()`. The app verifies deletion by re-reading the directory and requiring the target identity to be absent before reporting success.
 
-## v0.17 conversion layer
+## v0.17+ conversion layer
 
 Conversion stays above the USB protocol. The wire transaction remains the same whether the source was already an Evo file or was converted on the phone.
 
@@ -111,7 +111,9 @@ The transformation is only enabled when all four exact legacy window assignments
 
 The Evo token table still contains `TOK_BORDER_COLOR` (`E5BA`), but real-hardware testing showed a converted `BorderColor 2` statement produces `SYNTAX ERROR`. The Evo has no physical graph border corresponding to the older color-calculator feature.
 
-v0.17 does not silently erase the statement. A standalone `BorderColor` line is retained as a TI-BASIC comment by prefixing `TOK_APOST` and a space. If `BorderColor` appears inside a compound statement, conversion is refused until a safe transformation is implemented.
+The first v0.17 fidelity attempt prefixed the line with `TOK_APOST`, assuming it behaved as an executable comment. Hardware testing disproved that assumption: the apostrophe is a character token, so the interpreter still reached the unsupported `BorderColor` token.
+
+v0.17.1 replaces the **entire** standalone `BorderColor 1`–`4` command with a quoted source-note string made only from supported character tokens, for example `"BorderColor 2"`. That keeps the original intent visible in the editor while ensuring the unsupported token is absent from executable code. Compound or complex `BorderColor` expressions are still refused instead of guessed.
 
 ### Evo background image container
 
