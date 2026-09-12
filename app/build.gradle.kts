@@ -6,13 +6,18 @@ plugins {
 android {
     namespace = "com.tijack.evo"
     compileSdk = 35
+    ndkVersion = "27.0.12077973"
 
     defaultConfig {
         applicationId = "com.tijack.evo"
         minSdk = 29
         targetSdk = 35
-        versionCode = 17
-        versionName = "0.15.1"
+        versionCode = 18
+        versionName = "0.16"
+
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     buildTypes {
@@ -22,6 +27,13 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
         }
     }
 
