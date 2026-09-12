@@ -8,9 +8,9 @@
 
 TI-JACK is an open-source project for moving calculator variables and programs between TI calculators and modern computers or mobile devices. The current Android hardware target is the **TI-84 Evo USB protocol** (`0451:E018`), with additional calculator families planned as the project grows.
 
-## Current status — Android v0.15.1
+## Current status — Android v0.16
 
-The Evo Android path is bidirectional and has been tested on real hardware.
+The Evo Android path is bidirectional and has been tested on real hardware. v0.16 adds a conversion layer in front of the already-verified Evo transfer path.
 
 | Capability | Status |
 | --- | --- |
@@ -28,10 +28,11 @@ The Evo Android path is bidirectional and has been tested on real hardware.
 | Android folder picker | Working |
 | Android 15 status-bar / camera-cutout / navigation safe area | Working |
 | In-app `?` help / version / connection tips | Working |
+| Legacy TI variable → Evo conversion | Implemented in v0.16; hardware testing in progress |
+| PNG / JPG / JPEG / WebP → Evo background image | Implemented in v0.16; hardware testing in progress |
 | Manual release-USB button | Removed; normal detach is automatic |
 | USB-C OTG adapter + USB-A-to-C data cable | Working repeatedly on tested Samsung + Evo |
 | Direct USB-C-to-C on tested Samsung + Evo | USB role mismatch; see connection notes below |
-| Legacy `.8xp` → Evo conversion | Planned |
 | Additional TI calculator families | Planned |
 
 The transfer protocol fix proven in **v0.8** sends the complete checksum-bearing Evo file, includes the variable name and type in the transfer request, and terminates the upload using the observed `S/F/A/D*/Z/B` Kermit sequence. TI-JACK then re-reads the calculator directory and downloads the uploaded variable back before reporting it as transferred.
@@ -59,14 +60,44 @@ Android's public `UsbManager` API lets TI-JACK communicate with the calculator o
 
 1. Plug the USB adapter into the phone, connect the calculator, and wait for `TI-84 EVO CONNECTED`.
 2. Tap **CHOOSE FOLDER** and select the Android folder containing your calculator files.
-3. Tap one or more files in the **ANDROID** pane and choose **TRANSMIT →** to copy them to the calculator.
+3. Tap one or more files in the **ANDROID** pane and choose **TRANSMIT →** to copy or convert-and-copy them to the calculator.
 4. Tap one or more variables in the **CALCULATOR** pane and choose **← TRANSMIT** to copy them to Android.
 5. Use **SELECT ALL** or **CLEAR** to manage groups of selected items.
 6. Use **DELETE** on either pane to remove the selected Android files or calculator variables. TI-JACK asks for confirmation before deletion.
 7. When a destination already contains the selected variable/file, choose **REPLACE** or **SKIP EXISTING**.
-8. Tap the **?** in the upper-right for the installed version, credits, and connection tips.
+8. Tap the **?** in the upper-right for the installed version, credits, conversion notes, and connection tips.
 
-TI-JACK recognizes the Evo-style `.8x*2` file family used by the current protocol implementation. Legacy `.8xp` files are not directly interchangeable with Evo `.8xp2` files; proper conversion support is planned rather than simple extension renaming.
+Native Evo files transfer unchanged. Recognized legacy TI files display **[CONVERT]** in the Android pane and are converted to an Evo variable before transmission. Ordinary supported image files display **[TO IMAGE]** and are converted to an Evo background image.
+
+## Conversion safety
+
+TI-JACK does not send arbitrary files to the calculator. The v0.16 path is:
+
+```text
+recognize source → convert if needed → validate Evo container → transmit → read back and verify
+```
+
+Legacy TI conversion uses the Evo-capable `tivars_lib_cpp` conversion engine in **smart** mode. Converted output must pass TI-JACK's Evo checksum / CBOR / variable-type validation before it can reach the USB transmit path. Corrupt, unknown, unsupported, grouped, or multi-entry inputs are refused instead of being sent raw.
+
+The first legacy targets include common single-variable files such as `.8xp`, `.8xl`, `.8xm`, `.8xy`, `.8xv`, and related TI-83/84 family formats supported by the conversion engine. A converted TI-BASIC program can still contain commands whose behavior differs on the Evo, so programs should be tested with known inputs before classroom use.
+
+### Phone image conversion
+
+TI-JACK v0.16 accepts PNG, JPG/JPEG, and WebP files and creates an Evo **Image1–Image7** background-image variable (`.8ca2`) in memory before transmission.
+
+The converter:
+
+- fits the source onto the Evo's 160 × 105 background-image canvas,
+- preserves the source aspect ratio,
+- uses a white background for unused space,
+- converts pixels to RGB565,
+- writes the calculator's expected bottom-to-top row order,
+- creates a valid Evo CBOR container and checksum,
+- then uses the normal upload and read-back verification path.
+
+A source named like `Image3.jpg` prefers **Image3**. Otherwise TI-JACK chooses the next free Image slot. If the chosen slot already exists, the normal **REPLACE / SKIP EXISTING** dialog is used. A single batch is limited to seven ordinary images because the Evo has seven background-image slots.
+
+This first image-import pass intentionally uses automatic fit rather than a crop/preview editor; interactive preview/crop controls can be added later without changing the converter or transfer protocol.
 
 ### USB connection notes
 
@@ -88,10 +119,12 @@ Do not unplug during an active transfer. Once a transfer completes, normal physi
 
 TI-JACK deliberately does more than trust a transport ACK for uploads. A successful Android → calculator transfer must pass all of the following before the app counts it as transferred:
 
-1. The calculator acknowledges the Kermit upload session.
-2. The variable appears in a fresh calculator directory read.
-3. TI-JACK downloads that variable back from the calculator.
-4. The downloaded file matches the file that was sent.
+1. The input is a valid native Evo file or is successfully converted into one.
+2. TI-JACK validates the Evo container and checksum.
+3. The calculator acknowledges the Kermit upload session.
+4. The variable appears in a fresh calculator directory read.
+5. TI-JACK downloads that variable back from the calculator.
+6. The downloaded file matches the file that was sent.
 
 This behavior was added after early test builds could receive a successful transport acknowledgment without producing a visible calculator variable.
 
@@ -106,8 +139,13 @@ The Android app currently uses:
 - compile / target SDK 35
 - min SDK 29
 - Kotlin / Java 17
+- Android NDK 27.0.12077973
+- CMake 3.22.1 for the offline legacy conversion bridge
 - `usb-serial-for-android` 3.11.0
 - Android `DocumentFile` folder access
+- pinned MIT-licensed `tivars_lib_cpp` Evo conversion engine
+
+The native conversion engine is downloaded from its pinned public commit at build time and compiled into the APK. **The installed app performs conversions locally and does not need Internet access.**
 
 Build and install the `debug` APK, then connect the calculator over USB host/OTG.
 
@@ -122,12 +160,12 @@ The included workflow is:
 Every push to `main` builds the debug APK and publishes it as a workflow artifact named:
 
 ```text
-TI-JACK-Evo-Android-v0.15.1
+TI-JACK-Evo-Android-v0.16
 ```
 
 ## Protocol notes
 
-The Android implementation is a native Kotlin implementation of the observed Evo USB/Kermit behavior. It does not bundle Python or invoke the desktop helper at runtime.
+The Android USB implementation is native Kotlin code for the observed Evo USB/Kermit behavior. Legacy file conversion happens before the USB layer and does not change the proven transfer protocol.
 
 The current calculator USB identity is:
 
@@ -151,14 +189,14 @@ inside the app's private files directory.
 
 ## Credits
 
-TI-JACK project: **Jawatech / jeremymfrank**. Android USB serial support is provided by the open-source `usb-serial-for-android` library. See `THIRD_PARTY_NOTICES.md` for third-party notices.
+TI-JACK project: **Jawatech / jeremymfrank**. Android USB serial support is provided by the open-source `usb-serial-for-android` library. Legacy TI variable conversion uses the MIT-licensed `tivars_lib_cpp` project by Adrien "Adriweb" Bertrand. See `THIRD_PARTY_NOTICES.md` for third-party notices.
 
 TI-JACK is an independent project and is not affiliated with or endorsed by Texas Instruments.
 
 ## Roadmap
 
-Near-term work includes proper legacy TI file conversion beginning with `.8xp` → Evo-compatible `.8xp2`, expanding support across more variable types, improving connection diagnostics where useful, and adding additional TI calculator protocols behind the same transfer UI.
+Near-term work includes hardware validation of v0.16 legacy and image conversion, adding image preview/crop controls, expanding conversion coverage across more variable types, and adding additional TI calculator protocols behind the same transfer UI.
 
 ## Project direction
 
-TI-JACK is intended to become one transfer tool rather than a separate utility for every calculator generation. The UI, file-selection model, conflict handling, deletion workflow, and verification layer are being kept calculator-agnostic while protocol-specific transports are added underneath.
+TI-JACK is intended to become one transfer tool rather than a separate utility for every calculator generation. The UI, file-selection model, conflict handling, conversion layer, deletion workflow, and verification layer are being kept calculator-agnostic while protocol-specific transports are added underneath.
