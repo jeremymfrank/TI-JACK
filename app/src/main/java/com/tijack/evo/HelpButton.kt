@@ -2,6 +2,7 @@ package com.tijack.evo
 
 import android.app.AlertDialog
 import android.content.Context
+import android.os.Build
 import android.util.AttributeSet
 import android.view.Gravity
 import android.widget.TextView
@@ -28,8 +29,23 @@ class HelpButton @JvmOverloads constructor(
             .show()
     }
 
+    private fun appVersion(): String = try {
+        val info = if (Build.VERSION.SDK_INT >= 33) {
+            context.packageManager.getPackageInfo(
+                context.packageName,
+                android.content.pm.PackageManager.PackageInfoFlags.of(0)
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            context.packageManager.getPackageInfo(context.packageName, 0)
+        }
+        info.versionName ?: "unknown"
+    } catch (_: Throwable) {
+        "unknown"
+    }
+
     private fun helpText(): String = """
-        Version ${BuildConfig.VERSION_NAME}
+        Version ${appVersion()}
 
         CREDITS
         TI-JACK project: Jawatech / jeremymfrank
