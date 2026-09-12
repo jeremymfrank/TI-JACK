@@ -57,6 +57,7 @@ class MainActivity : Activity() {
     private lateinit var sendSelected: Button
     private lateinit var calculatorSelectAll: Button
     private lateinit var calculatorClearSelection: Button
+    private lateinit var deleteCalculatorSelected: Button
     private lateinit var saveSelected: Button
 
     private val executor = Executors.newSingleThreadExecutor()
@@ -132,6 +133,7 @@ class MainActivity : Activity() {
         sendSelected = findViewById(R.id.sendSelected)
         calculatorSelectAll = findViewById(R.id.calculatorSelectAll)
         calculatorClearSelection = findViewById(R.id.calculatorClearSelection)
+        deleteCalculatorSelected = findViewById(R.id.deleteCalculatorSelected)
         saveSelected = findViewById(R.id.saveSelected)
 
         chooseFolder.setOnClickListener { chooseAndroidFolder() }
@@ -141,6 +143,7 @@ class MainActivity : Activity() {
         sendSelected.setOnClickListener { prepareUploadBatch() }
         calculatorSelectAll.setOnClickListener { selectAllCalculatorEntries() }
         calculatorClearSelection.setOnClickListener { clearCalculatorSelection() }
+        deleteCalculatorSelected.setOnClickListener { confirmDeleteCalculatorSelection() }
         saveSelected.setOnClickListener {
             prepareDownloadBatch(selectedCalculatorEntries())
         }
@@ -529,6 +532,83 @@ class MainActivity : Activity() {
         renderCalculatorEntries(calculatorEntries)
     }
 
+    private fun confirmDeleteCalculatorSelection() {
+        if (connecting || transferring || selectedCalculator.isEmpty()) return
+        val entries = selectedCalculatorEntries()
+        if (entries.isEmpty()) {
+            selectedCalculator.clear()
+            renderCalculatorEntries(calculatorEntries)
+            return
+        }
+
+        val names = entries.joinToString("\n") {
+            "• ${it.name} [${EvoFileCodec.extensionForType(it.type)}]"
+        }
+        val count = entries.size
+        AlertDialog.Builder(this)
+            .setTitle("Delete selected calculator variables?")
+            .setMessage(
+                "Delete $count selected variable${if (count == 1) "" else "s"} " +
+                    "from the TI-84 Evo?\n\n$names\n\nThis cannot be undone."
+            )
+            .setPositiveButton("DELETE") { _, _ -> startDeleteCalculatorBatch(entries) }
+            .setNegativeButton("CANCEL", null)
+            .show()
+    }
+
+    private fun startDeleteCalculatorBatch(entries: List<EvoEntry>) {
+        if (connecting || transferring || entries.isEmpty()) return
+        val activeClient = client ?: return setTransferError("NO CALCULATOR CONNECTED")
+
+        transferring = true
+        updateActionButtons()
+        setLocalBusy(
+            "DELETING ${entries.size} CALCULATOR VARIABLE" +
+                if (entries.size == 1) "" else "S"
+        )
+
+        executor.execute {
+            var deletedCount = 0
+            var failedCount = 0
+            val failedKeys = LinkedHashSet<String>()
+            val deletedKeys = LinkedHashSet<String>()
+
+            for ((index, entry) in entries.withIndex()) {
+                runOnUiThread {
+                    diagnostic.text =
+                        "DELETING ${index + 1}/${entries.size} · ${entry.name} FROM EVO"
+                }
+                try {
+                    activeClient.deleteVariable(entry)
+                    deletedCount++
+                    deletedKeys += calculatorKey(entry)
+                } catch (t: Throwable) {
+                    failedCount++
+                    failedKeys += calculatorKey(entry)
+                    appendLog(
+                        "CALCULATOR DELETE ERROR ${entry.name}: ${t.message.orEmpty()}"
+                    )
+                }
+            }
+
+            val refreshed = try {
+                sortedEntries(activeClient.listFiles())
+            } catch (t: Throwable) {
+                appendLog("POST-DELETE LIST ERROR ${t.message.orEmpty()}")
+                calculatorEntries.filterNot { calculatorKey(it) in deletedKeys }
+            }
+            calculatorEntries = refreshed
+
+            runOnUiThread {
+                transferring = false
+                selectedCalculator.clear()
+                selectedCalculator.addAll(failedKeys)
+                renderCalculatorEntries(refreshed)
+                setReady("$deletedCount DELETED · $failedCount FAILED")
+            }
+        }
+    }
+
     private fun confirmDeleteAndroidSelection() {
         if (connecting || transferring || selectedAndroid.isEmpty()) return
         val currentFolder = folder ?: return setLocalReady("NO ANDROID FOLDER SELECTED")
@@ -901,6 +981,11 @@ class MainActivity : Activity() {
         } else {
             "DELETE ${selectedAndroid.size}"
         }
+        deleteCalculatorSelected.text = if (selectedCalculator.isEmpty()) {
+            "DELETE"
+        } else {
+            "DELETE ${selectedCalculator.size}"
+        }
 
         val enabled = !connecting && !transferring
         chooseFolder.isEnabled = !transferring
@@ -917,6 +1002,8 @@ class MainActivity : Activity() {
             enabled && client != null && calculatorEntries.isNotEmpty() &&
                 selectedCalculator.size < calculatorEntries.size
         calculatorClearSelection.isEnabled = enabled && selectedCalculator.isNotEmpty()
+        deleteCalculatorSelected.isEnabled =
+            enabled && selectedCalculator.isNotEmpty() && client != null
         saveSelected.isEnabled =
             enabled && selectedCalculator.isNotEmpty() && client != null
     }
