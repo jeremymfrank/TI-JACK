@@ -10,19 +10,36 @@
     android:paddingTop="12dp"
     android:paddingBottom="8dp">
 
-    <TextView
+    <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="TI-JACK"
-        android:textColor="@color/amber"
-        android:textSize="28sp"
-        android:textStyle="bold"
-        android:gravity="center" />
+        android:layout_height="wrap_content">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="TI-JACK"
+            android:textColor="@color/amber"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:gravity="center" />
+
+        <com.tijack.evo.HelpButton
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_gravity="end|center_vertical"
+            android:text="?"
+            android:contentDescription="Help and about"
+            android:textColor="@color/amber"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:background="?android:attr/selectableItemBackgroundBorderless" />
+    </FrameLayout>
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="EVO / ANDROID TRANSFER TEST 0.12"
+        android:text="EVO / ANDROID TRANSFER TEST 0.13"
         android:textColor="@color/amber_dim"
         android:textSize="11sp"
         android:gravity="center"
@@ -58,27 +75,7 @@
         android:gravity="center"
         android:maxLines="3"
         android:layout_marginTop="3dp"
-        android:layout_marginBottom="4dp" />
-
-    <com.tijack.evo.ReleaseUsbButton
-        android:layout_width="match_parent"
-        android:layout_height="28dp"
-        android:text="DISCONNECT / RELEASE USB"
-        android:textSize="8sp"
-        android:textStyle="bold"
-        android:textColor="@color/bg"
-        android:backgroundTint="@color/amber_dim"
-        android:minHeight="0dp"
-        android:layout_marginBottom="3dp" />
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="NORMAL UNPLUG SHOULD AUTO-CLOSE · DISCONNECT IS FALLBACK"
-        android:textColor="@color/amber_dim"
-        android:textSize="8sp"
-        android:gravity="center"
-        android:layout_marginBottom="6dp" />
+        android:layout_marginBottom="8dp" />
 
     <View
         android:layout_width="match_parent"
