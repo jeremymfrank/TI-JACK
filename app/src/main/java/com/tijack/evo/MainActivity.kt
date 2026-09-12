@@ -21,18 +21,27 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.documentfile.provider.DocumentFile
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
 
     companion object {
-        private const val ACTION_USB_PERMISSION =
-            "com.tijack.evo.USB_PERMISSION"
+        private const val ACTION_USB_PERMISSION = "com.tijack.evo.USB_PERMISSION"
         private const val REQUEST_FOLDER = 401
         private const val PREFS = "ti_jack_android"
         private const val PREF_FOLDER_URI = "folder_uri"
     }
+
+    private enum class ConflictPolicy { REPLACE, SKIP }
+
+    private data class PreparedUpload(
+        val file: DocumentFile,
+        val data: ByteArray,
+        val info: EvoFileInfo,
+        val conflict: Boolean
+    )
 
     private lateinit var usbManager: UsbManager
     private lateinit var connectionStatus: TextView
@@ -42,22 +51,23 @@ class MainActivity : Activity() {
     private lateinit var computerList: LinearLayout
     private lateinit var calculatorList: LinearLayout
     private lateinit var chooseFolder: Button
+    private lateinit var sendSelected: Button
+    private lateinit var saveSelected: Button
 
     private val executor = Executors.newSingleThreadExecutor()
     private val handler = Handler(Looper.getMainLooper())
 
-    @Volatile
-    private var connecting = false
-
-    @Volatile
-    private var transferring = false
+    @Volatile private var connecting = false
+    @Volatile private var transferring = false
 
     private var client: EvoUsbClient? = null
     private var currentDeviceId: Int? = null
     private var calculatorEntries: List<EvoEntry> = emptyList()
-    private var folderUri: Uri? = null
     private var folder: DocumentFile? = null
-    private var pendingDownload: EvoEntry? = null
+    private var pendingDownloads: List<EvoEntry> = emptyList()
+
+    private val selectedAndroid = LinkedHashSet<String>()
+    private val selectedCalculator = LinkedHashSet<String>()
 
     private val retryRunnable = Runnable {
         if (!isFinishing) scanForEvo()
@@ -110,22 +120,25 @@ class MainActivity : Activity() {
         computerList = findViewById(R.id.computerList)
         calculatorList = findViewById(R.id.calculatorList)
         chooseFolder = findViewById(R.id.chooseFolder)
+        sendSelected = findViewById(R.id.sendSelected)
+        saveSelected = findViewById(R.id.saveSelected)
 
         chooseFolder.setOnClickListener { chooseAndroidFolder() }
+        sendSelected.setOnClickListener { prepareUploadBatch() }
+        saveSelected.setOnClickListener {
+            prepareDownloadBatch(selectedCalculatorEntries())
+        }
+
         loadSavedFolder()
+        updateActionButtons()
 
         val filter = IntentFilter().apply {
             addAction(ACTION_USB_PERMISSION)
             addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
             addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
         }
-
         if (Build.VERSION.SDK_INT >= 33) {
-            registerReceiver(
-                usbReceiver,
-                filter,
-                Context.RECEIVER_NOT_EXPORTED
-            )
+            registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
             @Suppress("DEPRECATION")
             registerReceiver(usbReceiver, filter)
@@ -152,9 +165,8 @@ class MainActivity : Activity() {
         if (requestCode != REQUEST_FOLDER) return
 
         if (resultCode != RESULT_OK || data?.data == null) {
-            val waiting = pendingDownload
-            pendingDownload = null
-            if (waiting != null) {
+            if (pendingDownloads.isNotEmpty()) {
+                pendingDownloads = emptyList()
                 setReady("DOWNLOAD CANCELLED · NO ANDROID FOLDER SELECTED")
             }
             return
@@ -162,8 +174,7 @@ class MainActivity : Activity() {
 
         val uri = requireNotNull(data.data)
         val takeFlags = data.flags and
-            (Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         try {
             contentResolver.takePersistableUriPermission(uri, takeFlags)
         } catch (t: Throwable) {
@@ -176,12 +187,9 @@ class MainActivity : Activity() {
             .apply()
 
         setFolder(uri)
-
-        val waiting = pendingDownload
-        pendingDownload = null
-        if (waiting != null) {
-            handler.post { downloadVariable(waiting) }
-        }
+        val waiting = pendingDownloads
+        pendingDownloads = emptyList()
+        if (waiting.isNotEmpty()) handler.post { prepareDownloadBatch(waiting) }
     }
 
     override fun onDestroy() {
@@ -199,20 +207,15 @@ class MainActivity : Activity() {
         if (connecting || transferring) return
 
         val device = usbManager.deviceList.values.firstOrNull {
-            it.vendorId == EvoUsbClient.TI_VID &&
-                it.productId == EvoUsbClient.EVO_PID
+            it.vendorId == EvoUsbClient.TI_VID && it.productId == EvoUsbClient.EVO_PID
         }
-
         if (device == null) {
             closeClient()
             setSearching()
             scheduleRetry(1200)
             return
         }
-
-        if (client != null && currentDeviceId == device.deviceId) {
-            return
-        }
+        if (client != null && currentDeviceId == device.deviceId) return
 
         if (usbManager.hasPermission(device)) {
             connectAndList(device)
@@ -221,7 +224,6 @@ class MainActivity : Activity() {
 
         connecting = true
         setConnecting("WAITING FOR ANDROID USB PERMISSION")
-
         val permissionIntent = PendingIntent.getBroadcast(
             this,
             0,
@@ -233,7 +235,6 @@ class MainActivity : Activity() {
 
     private fun connectAndList(device: UsbDevice) {
         if (connecting || transferring) return
-
         connecting = true
         currentDeviceId = device.deviceId
         setConnecting("READING CALCULATOR")
@@ -245,31 +246,22 @@ class MainActivity : Activity() {
                 localClient = EvoUsbClient(usbManager, device, ::appendLog)
                 localClient.open()
                 val entries = sortedEntries(localClient.listFiles())
-
                 client = localClient
                 localClient = null
                 calculatorEntries = entries
-
                 runOnUiThread {
                     connecting = false
                     renderCalculatorEntries(entries)
-                    setReady(
-                        "${entries.size} VARIABLES · 0451:E018 · CDC 115200"
-                    )
+                    setReady("${entries.size} VARIABLES · 0451:E018 · CDC 115200")
                 }
             } catch (t: Throwable) {
-                try {
-                    localClient?.close()
-                } catch (_: Throwable) {
-                }
+                try { localClient?.close() } catch (_: Throwable) {}
                 appendLog("ERROR ${t.javaClass.simpleName}: ${t.message.orEmpty()}")
-
                 runOnUiThread {
                     connecting = false
                     val message = t.message.orEmpty()
                     val temporary =
-                        "busy" in message.lowercase() ||
-                            "timeout" in message.lowercase()
+                        "busy" in message.lowercase() || "timeout" in message.lowercase()
                     if (temporary) {
                         setConnecting("CALCULATOR BUSY · RETRYING")
                     } else {
@@ -303,11 +295,7 @@ class MainActivity : Activity() {
             setFolder(Uri.parse(text))
         } catch (t: Throwable) {
             appendLog("saved folder unavailable: ${t.message.orEmpty()}")
-            getSharedPreferences(PREFS, MODE_PRIVATE)
-                .edit()
-                .remove(PREF_FOLDER_URI)
-                .apply()
-            folderUri = null
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().remove(PREF_FOLDER_URI).apply()
             folder = null
             renderAndroidFiles()
         }
@@ -318,8 +306,8 @@ class MainActivity : Activity() {
         require(doc != null && doc.exists() && doc.isDirectory) {
             "selected Android folder is unavailable"
         }
-        folderUri = uri
         folder = doc
+        selectedAndroid.clear()
         computerFolder.text = doc.name ?: "SELECTED FOLDER"
         renderAndroidFiles()
     }
@@ -327,62 +315,56 @@ class MainActivity : Activity() {
     private fun renderAndroidFiles() {
         if (!::computerList.isInitialized) return
         computerList.removeAllViews()
-
         val currentFolder = folder
         if (currentFolder == null || !currentFolder.exists()) {
+            selectedAndroid.clear()
             computerFolder.text = "NO FOLDER SELECTED"
             computerList.addView(
                 textCell("CHOOSE A FOLDER TO SHOW ANDROID FILES", 11f, R.color.amber_dim)
             )
+            updateActionButtons()
             return
         }
 
         computerFolder.text = currentFolder.name ?: "SELECTED FOLDER"
         val files = try {
-            currentFolder.listFiles()
-                .filter { it.isFile }
+            currentFolder.listFiles().filter { it.isFile }
                 .sortedBy { it.name?.lowercase().orEmpty() }
         } catch (t: Throwable) {
             computerList.addView(
                 textCell("FOLDER ERROR: ${t.message.orEmpty()}", 11f, R.color.red)
             )
+            updateActionButtons()
             return
         }
 
+        val validKeys = files.filter { isEvoFilename(it.name.orEmpty()) }
+            .mapTo(HashSet()) { androidKey(it) }
+        selectedAndroid.retainAll(validKeys)
+
         if (files.isEmpty()) {
-            computerList.addView(
-                textCell("(EMPTY FOLDER)", 11f, R.color.amber_dim)
-            )
+            computerList.addView(textCell("(EMPTY FOLDER)", 11f, R.color.amber_dim))
+            updateActionButtons()
             return
         }
 
         for (file in files) {
             val name = file.name ?: "(unnamed)"
             val supported = isEvoFilename(name)
+            val key = androidKey(file)
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(4), dp(7), dp(4), dp(7))
                 isClickable = supported
                 isFocusable = supported
-                if (supported) {
-                    setOnClickListener { prepareUpload(file) }
-                }
             }
-
             val title = TextView(this).apply {
-                text = if (supported) name else "$name  [NOT EVO]"
-                setTextColor(
-                    getColor(if (supported) R.color.amber else R.color.amber_dim)
-                )
+                setTextColor(getColor(if (supported) R.color.amber else R.color.amber_dim))
                 textSize = 12f
                 typeface = Typeface.MONOSPACE
                 maxLines = 1
-                layoutParams = LinearLayout.LayoutParams(
-                    0,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    1f
-                )
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
             val size = TextView(this).apply {
                 text = formatBytes(file.length())
@@ -390,256 +372,415 @@ class MainActivity : Activity() {
                 textSize = 10f
                 gravity = Gravity.END
                 typeface = Typeface.MONOSPACE
-                layoutParams = LinearLayout.LayoutParams(
-                    dp(72),
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
+                layoutParams = LinearLayout.LayoutParams(dp(72), LinearLayout.LayoutParams.WRAP_CONTENT)
             }
-            val arrow = TextView(this).apply {
-                text = if (supported) "→" else ""
+            val marker = TextView(this).apply {
                 setTextColor(getColor(R.color.amber))
-                textSize = 18f
+                textSize = 10f
                 gravity = Gravity.END
-                layoutParams = LinearLayout.LayoutParams(
-                    dp(28),
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
+                typeface = Typeface.MONOSPACE
+                layoutParams = LinearLayout.LayoutParams(dp(34), LinearLayout.LayoutParams.WRAP_CONTENT)
             }
 
+            fun refreshSelection() {
+                val selected = key in selectedAndroid
+                title.text = when {
+                    !supported -> "$name  [NOT EVO]"
+                    selected -> "✓ $name"
+                    else -> name
+                }
+                marker.text = if (selected) "SEL" else ""
+                row.setBackgroundColor(getColor(if (selected) R.color.selection else R.color.panel))
+            }
+
+            if (supported) {
+                row.setOnClickListener {
+                    if (!selectedAndroid.add(key)) selectedAndroid.remove(key)
+                    refreshSelection()
+                    updateActionButtons()
+                }
+            }
             row.addView(title)
             row.addView(size)
-            row.addView(arrow)
+            row.addView(marker)
+            refreshSelection()
             computerList.addView(row)
             computerList.addView(divider())
         }
+        updateActionButtons()
     }
 
     private fun renderCalculatorEntries(entries: List<EvoEntry>) {
         calculatorList.removeAllViews()
+        val validKeys = entries.mapTo(HashSet()) { calculatorKey(it) }
+        selectedCalculator.retainAll(validKeys)
 
         if (entries.isEmpty()) {
-            calculatorList.addView(
-                textCell("(NO VARIABLES)", 11f, R.color.amber_dim)
-            )
+            calculatorList.addView(textCell("(NO VARIABLES)", 11f, R.color.amber_dim))
+            updateActionButtons()
             return
         }
 
         for (entry in entries) {
+            val key = calculatorKey(entry)
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(4), dp(7), dp(4), dp(7))
                 isClickable = true
                 isFocusable = true
-                setOnClickListener { downloadVariable(entry) }
             }
-
             val name = TextView(this).apply {
-                text = "${entry.name}  [${EvoFileCodec.extensionForType(entry.type)}]"
                 setTextColor(getColor(R.color.amber))
                 textSize = 12f
                 typeface = Typeface.MONOSPACE
                 maxLines = 1
-                layoutParams = LinearLayout.LayoutParams(
-                    0,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    1f
-                )
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
-
             val size = TextView(this).apply {
                 text = formatBytes(entry.size)
                 setTextColor(getColor(R.color.amber))
                 textSize = 10f
                 gravity = Gravity.END
                 typeface = Typeface.MONOSPACE
-                layoutParams = LinearLayout.LayoutParams(
-                    dp(76),
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
+                layoutParams = LinearLayout.LayoutParams(dp(76), LinearLayout.LayoutParams.WRAP_CONTENT)
             }
-
             val memory = TextView(this).apply {
                 text = if (entry.archived) "ARC" else "RAM"
                 setTextColor(getColor(R.color.amber_dim))
                 textSize = 9f
                 gravity = Gravity.END
                 typeface = Typeface.MONOSPACE
-                layoutParams = LinearLayout.LayoutParams(
-                    dp(43),
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
+                layoutParams = LinearLayout.LayoutParams(dp(43), LinearLayout.LayoutParams.WRAP_CONTENT)
             }
 
+            fun refreshSelection() {
+                val selected = key in selectedCalculator
+                name.text =
+                    "${if (selected) "✓ " else ""}${entry.name}  [${EvoFileCodec.extensionForType(entry.type)}]"
+                row.setBackgroundColor(getColor(if (selected) R.color.selection else R.color.panel))
+            }
+            row.setOnClickListener {
+                if (!selectedCalculator.add(key)) selectedCalculator.remove(key)
+                refreshSelection()
+                updateActionButtons()
+            }
             row.addView(name)
             row.addView(size)
             row.addView(memory)
+            refreshSelection()
             calculatorList.addView(row)
             calculatorList.addView(divider())
         }
+        updateActionButtons()
     }
 
-    private fun prepareUpload(file: DocumentFile) {
+    private fun prepareUploadBatch() {
         if (transferring || connecting) return
-        val activeClient = client
-        if (activeClient == null) {
-            setTransferError("NO CALCULATOR CONNECTED")
-            return
-        }
+        if (client == null) return setTransferError("NO CALCULATOR CONNECTED")
+        val currentFolder = folder ?: return setTransferError("NO ANDROID FOLDER SELECTED")
+
+        val files = currentFolder.listFiles()
+            .filter { it.isFile && androidKey(it) in selectedAndroid }
+            .sortedBy { it.name?.lowercase().orEmpty() }
+        if (files.isEmpty()) return
 
         transferring = true
-        setTransferStatus("READING ${file.name ?: "ANDROID FILE"}")
+        updateActionButtons()
+        setTransferStatus("READING ${files.size} SELECTED FILE${if (files.size == 1) "" else "S"}")
+        val existingSnapshot = calculatorEntries
 
         executor.execute {
-            try {
-                val data = contentResolver.openInputStream(file.uri)?.use { it.readBytes() }
-                    ?: error("Android could not read ${file.name ?: "file"}")
-                val info = EvoFileCodec.inspect(data)
-                val existing = calculatorEntries.firstOrNull {
-                    EvoFileCodec.sameIdentity(info, it)
-                }
-
-                if (existing != null) {
+            val prepared = ArrayList<PreparedUpload>()
+            var skipped = 0
+            for ((index, file) in files.withIndex()) {
+                try {
                     runOnUiThread {
-                        transferring = false
-                        AlertDialog.Builder(this)
-                            .setTitle("Replace existing variable?")
-                            .setMessage(
-                                "${existing.name} already exists on the Evo. Replace it?"
-                            )
-                            .setPositiveButton("REPLACE") { _, _ ->
-                                uploadPrepared(file, data, true)
-                            }
-                            .setNegativeButton("CANCEL") { _, _ ->
-                                setReady("UPLOAD CANCELLED")
-                            }
-                            .setOnCancelListener { setReady("UPLOAD CANCELLED") }
-                            .show()
+                        diagnostic.text =
+                            "READING ${index + 1}/${files.size} · ${file.name ?: "ANDROID FILE"}"
                     }
-                } else {
-                    runOnUiThread { uploadPrepared(file, data, false) }
+                    val data = readDocumentFile(file)
+                    runOnUiThread {
+                        diagnostic.text =
+                            "VALIDATING ${index + 1}/${files.size} · ${file.name ?: "ANDROID FILE"}"
+                    }
+                    val info = EvoFileCodec.inspect(data)
+                    val conflict = existingSnapshot.any { EvoFileCodec.sameIdentity(info, it) }
+                    prepared += PreparedUpload(file, data, info, conflict)
+                } catch (t: Throwable) {
+                    skipped++
+                    appendLog("UPLOAD SKIP ${file.name.orEmpty()}: ${t.message.orEmpty()}")
                 }
-            } catch (t: Throwable) {
-                appendLog("UPLOAD PREP ERROR ${t.message.orEmpty()}")
-                runOnUiThread {
-                    transferring = false
-                    setTransferError(t.message ?: t.javaClass.simpleName)
+            }
+
+            runOnUiThread {
+                transferring = false
+                updateActionButtons()
+                if (prepared.isEmpty()) {
+                    setReady(batchSummary(0, skipped, 0))
+                    return@runOnUiThread
+                }
+                val conflicts = prepared.count { it.conflict }
+                if (conflicts > 0) {
+                    showConflictDialog(
+                        conflicts,
+                        "CALCULATOR",
+                        onReplace = { startUploadBatch(prepared, ConflictPolicy.REPLACE, skipped) },
+                        onSkip = { startUploadBatch(prepared, ConflictPolicy.SKIP, skipped) }
+                    )
+                } else {
+                    startUploadBatch(prepared, ConflictPolicy.SKIP, skipped)
                 }
             }
         }
     }
 
-    private fun uploadPrepared(
-        file: DocumentFile,
-        data: ByteArray,
-        overwrite: Boolean
+    private fun startUploadBatch(
+        prepared: List<PreparedUpload>,
+        policy: ConflictPolicy,
+        preSkipped: Int
     ) {
         if (transferring || connecting) return
-        val activeClient = client ?: run {
-            setTransferError("NO CALCULATOR CONNECTED")
-            return
-        }
-
+        val activeClient = client ?: return setTransferError("NO CALCULATOR CONNECTED")
         transferring = true
-        val displayName = file.name ?: "ANDROID FILE"
-        setTransferStatus("SENDING $displayName → EVO")
+        updateActionButtons()
+        setTransferStatus("SENDING ${prepared.size} FILE${if (prepared.size == 1) "" else "S"} → EVO")
 
         executor.execute {
-            try {
-                val result = activeClient.uploadVariable(data, overwrite)
-                val entries = sortedEntries(activeClient.listFiles())
-                calculatorEntries = entries
-                val target = if (result.archived) "ARC" else "RAM"
+            var transferredCount = 0
+            var skippedCount = preSkipped
+            var failedCount = 0
+            val failedKeys = LinkedHashSet<String>()
 
-                runOnUiThread {
-                    transferring = false
-                    renderCalculatorEntries(entries)
-                    renderAndroidFiles()
-                    setReady("SENT $displayName → EVO · $target")
+            for ((index, item) in prepared.withIndex()) {
+                if (item.conflict && policy == ConflictPolicy.SKIP) {
+                    skippedCount++
+                    continue
                 }
+                runOnUiThread {
+                    diagnostic.text =
+                        "SENDING ${index + 1}/${prepared.size} · ${item.file.name ?: "ANDROID FILE"}"
+                }
+                try {
+                    activeClient.uploadVariable(
+                        item.data,
+                        overwrite = item.conflict && policy == ConflictPolicy.REPLACE
+                    )
+                    transferredCount++
+                } catch (t: Throwable) {
+                    failedCount++
+                    failedKeys += androidKey(item.file)
+                    appendLog("UPLOAD ERROR ${item.file.name.orEmpty()}: ${t.message.orEmpty()}")
+                }
+            }
+
+            val refreshed = try {
+                sortedEntries(activeClient.listFiles())
             } catch (t: Throwable) {
-                appendLog("UPLOAD ERROR ${t.message.orEmpty()}")
-                runOnUiThread {
-                    transferring = false
-                    setTransferError(t.message ?: t.javaClass.simpleName)
-                }
+                appendLog("POST-UPLOAD LIST ERROR ${t.message.orEmpty()}")
+                calculatorEntries
+            }
+            calculatorEntries = refreshed
+
+            runOnUiThread {
+                transferring = false
+                selectedAndroid.clear()
+                selectedAndroid.addAll(failedKeys)
+                renderCalculatorEntries(refreshed)
+                renderAndroidFiles()
+                setReady(batchSummary(transferredCount, skippedCount, failedCount))
             }
         }
     }
 
-    private fun downloadVariable(entry: EvoEntry) {
-        if (transferring || connecting) return
-        val activeClient = client
-        if (activeClient == null) {
-            setTransferError("NO CALCULATOR CONNECTED")
-            return
-        }
-
+    private fun prepareDownloadBatch(entries: List<EvoEntry>) {
+        if (transferring || connecting || entries.isEmpty()) return
+        if (client == null) return setTransferError("NO CALCULATOR CONNECTED")
         val currentFolder = folder
         if (currentFolder == null || !currentFolder.exists()) {
-            pendingDownload = entry
+            pendingDownloads = entries
             setTransferStatus("CHOOSE ANDROID DESTINATION FOLDER")
             chooseAndroidFolder()
             return
         }
 
+        val conflicts = entries.count {
+            currentFolder.findFile(EvoFileCodec.outputFileName(it)) != null
+        }
+        if (conflicts > 0) {
+            showConflictDialog(
+                conflicts,
+                "ANDROID",
+                onReplace = { startDownloadBatch(entries, ConflictPolicy.REPLACE) },
+                onSkip = { startDownloadBatch(entries, ConflictPolicy.SKIP) }
+            )
+        } else {
+            startDownloadBatch(entries, ConflictPolicy.SKIP)
+        }
+    }
+
+    private fun startDownloadBatch(entries: List<EvoEntry>, policy: ConflictPolicy) {
+        if (transferring || connecting) return
+        val activeClient = client ?: return setTransferError("NO CALCULATOR CONNECTED")
+        val currentFolder = folder ?: return setTransferError("NO ANDROID FOLDER SELECTED")
         transferring = true
-        setTransferStatus("SAVING ${entry.name} → ANDROID")
+        updateActionButtons()
+        setTransferStatus("SAVING ${entries.size} FILE${if (entries.size == 1) "" else "S"} → ANDROID")
 
         executor.execute {
-            try {
-                val data = activeClient.downloadVariable(entry)
-                val output = createUniqueFile(
-                    currentFolder,
-                    EvoFileCodec.outputFileName(entry)
-                )
-                contentResolver.openOutputStream(output.uri, "w")?.use {
-                    it.write(data)
-                    it.flush()
-                } ?: error("Android could not open destination file")
+            var transferredCount = 0
+            var skippedCount = 0
+            var failedCount = 0
+            val failedKeys = LinkedHashSet<String>()
 
-                runOnUiThread {
-                    transferring = false
-                    renderAndroidFiles()
-                    setReady("SAVED ${output.name ?: entry.name} → ANDROID")
+            for ((index, entry) in entries.withIndex()) {
+                val requestedName = EvoFileCodec.outputFileName(entry)
+                val existing = currentFolder.findFile(requestedName)
+                if (existing != null && policy == ConflictPolicy.SKIP) {
+                    skippedCount++
+                    continue
                 }
-            } catch (t: Throwable) {
-                appendLog("DOWNLOAD ERROR ${t.message.orEmpty()}")
                 runOnUiThread {
-                    transferring = false
-                    setTransferError(t.message ?: t.javaClass.simpleName)
+                    diagnostic.text =
+                        "SAVING ${index + 1}/${entries.size} · ${entry.name} → ANDROID"
                 }
+                try {
+                    val data = activeClient.downloadVariable(entry)
+                    writeAndroidFile(currentFolder, requestedName, data, existing != null)
+                    transferredCount++
+                } catch (t: Throwable) {
+                    failedCount++
+                    failedKeys += calculatorKey(entry)
+                    appendLog("DOWNLOAD ERROR ${entry.name}: ${t.message.orEmpty()}")
+                }
+            }
+
+            runOnUiThread {
+                transferring = false
+                selectedCalculator.clear()
+                selectedCalculator.addAll(failedKeys)
+                renderAndroidFiles()
+                renderCalculatorEntries(calculatorEntries)
+                setReady(batchSummary(transferredCount, skippedCount, failedCount))
             }
         }
     }
 
-    private fun createUniqueFile(
-        directory: DocumentFile,
-        requestedName: String
-    ): DocumentFile {
-        var name = requestedName
-        var index = 1
-        while (directory.findFile(name) != null) {
-            val dot = requestedName.lastIndexOf('.')
-            name = if (dot > 0) {
-                requestedName.substring(0, dot) +
-                    " ($index)" +
-                    requestedName.substring(dot)
+    private fun readDocumentFile(file: DocumentFile): ByteArray {
+        val declared = file.length()
+        require(declared >= 0) { "Android reported an invalid file size" }
+        require(declared <= 64L * 1024L * 1024L) { "file is too large" }
+        val input = contentResolver.openInputStream(file.uri)
+            ?: error("Android could not read ${file.name ?: "file"}")
+        input.use { stream ->
+            val out = ByteArrayOutputStream(
+                if (declared in 1..Int.MAX_VALUE.toLong()) declared.toInt() else 8192
+            )
+            val buffer = ByteArray(8192)
+            if (declared > 0) {
+                var remaining = declared
+                while (remaining > 0) {
+                    val count = stream.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                    if (count < 0) break
+                    if (count == 0) continue
+                    out.write(buffer, 0, count)
+                    remaining -= count
+                }
+                require(remaining == 0L) {
+                    "${file.name ?: "file"} ended before its reported $declared bytes"
+                }
             } else {
-                "$requestedName ($index)"
+                while (true) {
+                    val count = stream.read(buffer)
+                    if (count < 0) break
+                    if (count > 0) out.write(buffer, 0, count)
+                    require(out.size() <= 64 * 1024 * 1024) { "file is too large" }
+                }
             }
-            index++
-            require(index < 1000) { "too many files with the same name" }
+            return out.toByteArray()
         }
-        return directory.createFile("application/octet-stream", name)
-            ?: error("Android could not create $name")
     }
+
+    private fun writeAndroidFile(
+        directory: DocumentFile,
+        requestedName: String,
+        data: ByteArray,
+        replace: Boolean
+    ) {
+        var target = directory.findFile(requestedName)
+        if (target != null && replace) {
+            val direct = try {
+                contentResolver.openOutputStream(target.uri, "rwt")
+            } catch (_: Throwable) {
+                null
+            }
+            if (direct != null) {
+                direct.use { it.write(data); it.flush() }
+                return
+            }
+            require(target.delete()) { "Android could not replace $requestedName" }
+            target = null
+        }
+        require(target == null) { "$requestedName already exists" }
+        val created = directory.createFile("application/octet-stream", requestedName)
+            ?: error("Android could not create $requestedName")
+        contentResolver.openOutputStream(created.uri, "w")?.use {
+            it.write(data)
+            it.flush()
+        } ?: error("Android could not open $requestedName")
+    }
+
+    private fun showConflictDialog(
+        conflicts: Int,
+        destination: String,
+        onReplace: () -> Unit,
+        onSkip: () -> Unit
+    ) {
+        AlertDialog.Builder(this)
+            .setTitle("Replace existing files?")
+            .setMessage(
+                "$conflicts selected file${if (conflicts == 1) "" else "s"} already " +
+                    "exist${if (conflicts == 1) "s" else ""} on $destination."
+            )
+            .setPositiveButton("REPLACE") { _, _ -> onReplace() }
+            .setNegativeButton("SKIP EXISTING") { _, _ -> onSkip() }
+            .setNeutralButton("CANCEL") { _, _ -> setReady("TRANSFER CANCELLED") }
+            .setOnCancelListener { setReady("TRANSFER CANCELLED") }
+            .show()
+    }
+
+    private fun selectedCalculatorEntries(): List<EvoEntry> =
+        calculatorEntries.filter { calculatorKey(it) in selectedCalculator }
+
+    private fun androidKey(file: DocumentFile): String = file.uri.toString()
+
+    private fun calculatorKey(entry: EvoEntry): String =
+        "${entry.type}:" + entry.tokenName.joinToString("") {
+            "%02X".format(it.toInt() and 0xFF)
+        }
+
+    private fun updateActionButtons() {
+        if (!::sendSelected.isInitialized) return
+        sendSelected.text = if (selectedAndroid.isEmpty()) {
+            "SEND SELECTED →"
+        } else {
+            "SEND ${selectedAndroid.size} →"
+        }
+        saveSelected.text = if (selectedCalculator.isEmpty()) {
+            "← SAVE SELECTED"
+        } else {
+            "← SAVE ${selectedCalculator.size}"
+        }
+        val enabled = !connecting && !transferring
+        sendSelected.isEnabled = enabled && selectedAndroid.isNotEmpty() && client != null
+        saveSelected.isEnabled = enabled && selectedCalculator.isNotEmpty() && client != null
+    }
+
+    private fun batchSummary(done: Int, skipped: Int, failed: Int): String =
+        "$done TRANSFERRED · $skipped SKIPPED · $failed FAILED"
 
     private fun sortedEntries(entries: List<EvoEntry>): List<EvoEntry> =
-        entries.sortedWith(
-            compareBy<EvoEntry> { it.type }
-                .thenBy { it.name.lowercase() }
-        )
+        entries.sortedWith(compareBy<EvoEntry> { it.type }.thenBy { it.name.lowercase() })
 
     private fun isEvoFilename(name: String): Boolean {
         val lower = name.lowercase()
@@ -655,13 +796,14 @@ class MainActivity : Activity() {
         transferring = false
         currentDeviceId = null
         calculatorEntries = emptyList()
+        selectedCalculator.clear()
         connectionStatus.text = "● NO CALCULATOR CONNECTED"
         connectionStatus.setTextColor(getColor(R.color.amber))
         operationStatus.text = "SEARCHING..."
         operationStatus.setTextColor(getColor(R.color.amber))
-        diagnostic.text =
-            "Set USB controlled by CONNECTED DEVICE if Android does not enumerate the Evo."
+        diagnostic.text = "Set USB controlled by CONNECTED DEVICE if Android does not enumerate the Evo."
         calculatorList.removeAllViews()
+        updateActionButtons()
     }
 
     private fun setConnecting(detail: String) {
@@ -670,6 +812,7 @@ class MainActivity : Activity() {
         operationStatus.text = "CONNECTING..."
         operationStatus.setTextColor(getColor(R.color.amber))
         diagnostic.text = detail
+        updateActionButtons()
     }
 
     private fun setTransferStatus(detail: String) {
@@ -678,6 +821,7 @@ class MainActivity : Activity() {
         operationStatus.text = "TRANSFERRING..."
         operationStatus.setTextColor(getColor(R.color.amber))
         diagnostic.text = detail.take(180)
+        updateActionButtons()
     }
 
     private fun setReady(detail: String) {
@@ -686,6 +830,7 @@ class MainActivity : Activity() {
         operationStatus.text = "READY"
         operationStatus.setTextColor(getColor(R.color.green))
         diagnostic.text = detail.take(180)
+        updateActionButtons()
     }
 
     private fun setTransferError(detail: String) {
@@ -694,6 +839,7 @@ class MainActivity : Activity() {
         operationStatus.text = "TRANSFER FAILED"
         operationStatus.setTextColor(getColor(R.color.red))
         diagnostic.text = detail.take(180)
+        updateActionButtons()
     }
 
     private fun showConnectionError(title: String, detail: String) {
@@ -702,6 +848,7 @@ class MainActivity : Activity() {
         operationStatus.text = "CONNECTING..."
         operationStatus.setTextColor(getColor(R.color.amber))
         diagnostic.text = detail.take(180)
+        updateActionButtons()
     }
 
     private fun scheduleRetry(delayMs: Long) {
@@ -711,47 +858,31 @@ class MainActivity : Activity() {
 
     @Synchronized
     private fun closeClient() {
-        try {
-            client?.close()
-        } catch (_: Throwable) {
-        }
+        try { client?.close() } catch (_: Throwable) {}
         client = null
     }
 
     private fun appendLog(message: String) {
         try {
-            val line = "${System.currentTimeMillis()} $message\n"
-            File(filesDir, "ti_jack_evo_android.log").appendText(line)
-        } catch (_: Throwable) {
-        }
+            File(filesDir, "ti_jack_evo_android.log")
+                .appendText("${System.currentTimeMillis()} $message\n")
+        } catch (_: Throwable) {}
     }
 
-    private fun Intent.usbDevice(): UsbDevice? {
-        return if (Build.VERSION.SDK_INT >= 33) {
-            getParcelableExtra(
-                UsbManager.EXTRA_DEVICE,
-                UsbDevice::class.java
-            )
+    private fun Intent.usbDevice(): UsbDevice? =
+        if (Build.VERSION.SDK_INT >= 33) {
+            getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
         } else {
             @Suppress("DEPRECATION")
             getParcelableExtra(UsbManager.EXTRA_DEVICE)
         }
+
+    private fun divider(): View = View(this).apply {
+        setBackgroundColor(getColor(R.color.divider))
+        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
     }
 
-    private fun divider(): View =
-        View(this).apply {
-            setBackgroundColor(getColor(R.color.divider))
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(1)
-            )
-        }
-
-    private fun textCell(
-        value: String,
-        size: Float,
-        color: Int
-    ): TextView =
+    private fun textCell(value: String, size: Float, color: Int): TextView =
         TextView(this).apply {
             text = value
             textSize = size
@@ -760,12 +891,11 @@ class MainActivity : Activity() {
             typeface = Typeface.MONOSPACE
         }
 
-    private fun formatBytes(value: Long): String =
-        when {
-            value < 1024 -> "$value B"
-            value < 1024 * 1024 -> "%.1f KB".format(value / 1024.0)
-            else -> "%.1f MB".format(value / (1024.0 * 1024.0))
-        }
+    private fun formatBytes(value: Long): String = when {
+        value < 1024 -> "$value B"
+        value < 1024 * 1024 -> "%.1f KB".format(value / 1024.0)
+        else -> "%.1f MB".format(value / (1024.0 * 1024.0))
+    }
 
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
