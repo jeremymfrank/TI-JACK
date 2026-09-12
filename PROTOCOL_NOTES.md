@@ -53,11 +53,9 @@ TI-JACK does not treat the transport acknowledgment alone as success. After uplo
 
 Calculator-side delete uses the Evo variable-delete transaction implemented in `EvoUsbClient.deleteVariable()`. The app verifies deletion by re-reading the directory and requiring the target identity to be absent before reporting success.
 
-## v0.16 conversion layer
+## v0.17 conversion layer
 
-Conversion is deliberately above the USB protocol. The wire transaction remains the same whether the source was already an Evo file or was converted on the phone.
-
-The v0.16 Android path is:
+Conversion stays above the USB protocol. The wire transaction remains the same whether the source was already an Evo file or was converted on the phone.
 
 ```text
 source file
@@ -68,11 +66,56 @@ source file
   → byte-for-byte read-back verification
 ```
 
-Legacy TI variables are converted locally using the pinned Evo-capable `tivars_lib_cpp` engine. Ordinary PNG/JPEG/WebP images are converted locally into type-5 `.8ca2` Evo background-image variables. Unsupported or failed conversions never reach the USB upload method.
+### Pure-Kotlin legacy TI-BASIC preview
+
+v0.17 replaces the v0.16 native converter experiment with a pure-Kotlin `.8xp` path. The legacy parser verifies the TI file signature, section lengths, single-entry program type, token-data length, and legacy checksum before token conversion starts.
+
+The converter is intentionally fail-closed: an unknown/unverified legacy token aborts conversion instead of becoming `?` or being sent raw. Successful output is written as an Evo type-2 program container with:
+
+- metadata type `2`
+- metadata version `1`
+- flags `0`
+- tokenized program name terminated by `0000`
+- body version `1`
+- `arraylen` equal to the number of 16-bit token words
+- `size` equal to `arraylen * 2`
+- little-endian 16-bit program tokens terminated by `TOK_EOS` (`0000`)
+
+The generated file is passed through `EvoFileCodec.inspect()` before upload.
+
+### Fidelity pass for classic CE geometry
+
+The first real-hardware compatibility target, `SNAKE.8xp`, explicitly sets:
+
+```text
+0   -> Xmin
+264 -> Xmax
+0   -> Ymin
+164 -> Ymax
+```
+
+That identifies a 265 × 165 hard-coded CE logical canvas. Stretching that canvas over the Evo's larger graph area would change line geometry, text placement, and pixel collision tests. v0.17 therefore centers it by changing the Evo graph window to:
+
+```text
+-27 -> Xmin
+291 -> Xmax
+-22 -> Ymin
+186 -> Ymax
+```
+
+This preserves one logical graph unit per display pixel while leaving a 27-pixel horizontal and 22-pixel vertical margin. `Text(` row/column arguments and the tested `pxl-Test(` coordinates receive matching `+22` / `+27` offsets. Graph-coordinate commands such as `Line(`, `Horizontal`, and `Pt-On(`/`Pt-Off(` remain in their original legacy coordinate system.
+
+The transformation is only enabled when all four exact legacy window assignments are present. TI-JACK does not assume every program should be centered.
+
+### Removed Evo commands
+
+The Evo token table still contains `TOK_BORDER_COLOR` (`E5BA`), but real-hardware testing showed a converted `BorderColor 2` statement produces `SYNTAX ERROR`. The Evo has no physical graph border corresponding to the older color-calculator feature.
+
+v0.17 does not silently erase the statement. A standalone `BorderColor` line is retained as a TI-BASIC comment by prefixing `TOK_APOST` and a space. If `BorderColor` appears inside a compound statement, conversion is refused until a safe transformation is implemented.
 
 ### Evo background image container
 
-The generated type-5 background image uses:
+Ordinary PNG/JPEG/WebP images are converted locally into type-5 `.8ca2` Evo background-image variables. The generated image uses:
 
 - metadata version `1`
 - metadata flags `1`
@@ -83,4 +126,4 @@ The generated type-5 background image uses:
 - `160 × 105` RGB565 pixels, little-endian
 - rows stored bottom-to-top
 
-The generated CBOR body receives the same Evo XOR checksum used by calculator-exported files and is passed through `EvoFileCodec.inspect()` before transmission.
+The generated CBOR body receives the Evo XOR checksum and is passed through `EvoFileCodec.inspect()` before transmission.
