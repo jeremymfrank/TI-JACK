@@ -694,7 +694,7 @@ class MainActivity : Activity() {
 
         val imageFiles = files.filter { EvoImageConverter.canConvertFilename(it.name.orEmpty()) }
         if (imageFiles.size > 7) {
-            return setTransferError("THE EVO HAS 7 IMAGE SLOTS · SELECT 7 OR FEWER IMAGES")
+            return setTransferError("THE EVO HAS 7 IMAGE SLOTS · SELECT 7 OR FEWER BACKGROUND IMAGES")
         }
         pendingImageSlots = allocateImageSlots(imageFiles, calculatorEntries)
 
@@ -705,26 +705,36 @@ class MainActivity : Activity() {
 
         executor.execute {
             val prepared = ArrayList<PreparedUpload>()
+            val generatedIdentities = HashSet<String>()
             var skipped = 0
             for ((index, file) in files.withIndex()) {
                 try {
                     runOnUiThread {
                         val fileName = file.name ?: "ANDROID FILE"
                         val action = when {
+                            ViewerMediaConverter.canConvertFilename(fileName) -> "PREPARING MEDIA"
                             EvoImageConverter.canConvertFilename(fileName) -> "CONVERTING IMAGE"
                             LegacyTiConverter.canConvertFilename(fileName) -> "CONVERTING"
                             else -> "READING"
                         }
                         diagnostic.text = "$action ${index + 1}/${files.size} · $fileName"
                     }
-                    val data = readDocumentFile(file)
-                    runOnUiThread {
-                        diagnostic.text =
-                            "VALIDATING ${index + 1}/${files.size} · ${file.name ?: "ANDROID FILE"}"
+                    val outputs = readDocumentFiles(file)
+                    require(outputs.isNotEmpty()) { "conversion produced no calculator variables" }
+                    for ((outputIndex, data) in outputs.withIndex()) {
+                        runOnUiThread {
+                            val suffix = if (outputs.size > 1) " · ${outputIndex + 1}/${outputs.size}" else ""
+                            diagnostic.text =
+                                "VALIDATING ${index + 1}/${files.size}$suffix · ${file.name ?: "ANDROID FILE"}"
+                        }
+                        val info = EvoFileCodec.inspect(data)
+                        val identity = fileInfoKey(info)
+                        require(generatedIdentities.add(identity)) {
+                            "multiple selected sources produce the same calculator variable; rename one source and retry"
+                        }
+                        val conflict = existingSnapshot.any { EvoFileCodec.sameIdentity(info, it) }
+                        prepared += PreparedUpload(file, data, info, conflict)
                     }
-                    val info = EvoFileCodec.inspect(data)
-                    val conflict = existingSnapshot.any { EvoFileCodec.sameIdentity(info, it) }
-                    prepared += PreparedUpload(file, data, info, conflict)
                 } catch (t: Throwable) {
                     skipped++
                     appendLog("UPLOAD SKIP ${file.name.orEmpty()}: ${t.message.orEmpty()}")
@@ -763,7 +773,7 @@ class MainActivity : Activity() {
         val activeClient = client ?: return setTransferError("NO CALCULATOR CONNECTED")
         transferring = true
         updateActionButtons()
-        setTransferStatus("SENDING ${prepared.size} FILE${if (prepared.size == 1) "" else "S"} → EVO")
+        setTransferStatus("SENDING ${prepared.size} VARIABLE${if (prepared.size == 1) "" else "S"} → EVO")
 
         executor.execute {
             var transferredCount = 0
@@ -777,8 +787,9 @@ class MainActivity : Activity() {
                     continue
                 }
                 runOnUiThread {
+                    val generatedName = item.info.displayName?.let { " → $it" }.orEmpty()
                     diagnostic.text =
-                        "SENDING ${index + 1}/${prepared.size} · ${item.file.name ?: "ANDROID FILE"}"
+                        "SENDING ${index + 1}/${prepared.size} · ${item.file.name ?: "ANDROID FILE"}$generatedName"
                 }
                 try {
                     activeClient.uploadVariable(
@@ -885,18 +896,20 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun readDocumentFile(file: DocumentFile): ByteArray {
+    private fun readDocumentFiles(file: DocumentFile): List<ByteArray> {
         val raw = readRawDocumentFile(file)
         val name = file.name.orEmpty()
         return when {
-            isNativeEvoFilename(name) -> raw
+            isNativeEvoFilename(name) -> listOf(raw)
             LegacyTiConverter.canConvertFilename(name) ->
-                LegacyTiConverter.convertToEvo(raw, name, cacheDir, smart = true)
+                listOf(LegacyTiConverter.convertToEvo(raw, name, cacheDir, smart = true))
             EvoImageConverter.canConvertFilename(name) -> {
                 val slot = pendingImageSlots[androidKey(file)]
                     ?: error("no Evo image slot was assigned to $name")
-                EvoImageConverter.convertToBackgroundImage(raw, slot)
+                listOf(EvoImageConverter.convertToBackgroundImage(raw, slot))
             }
+            ViewerMediaConverter.canConvertFilename(name) ->
+                ViewerMediaConverter.convertToEvoVariables(raw, name)
             else -> error("unsupported file type")
         }
     }
@@ -974,7 +987,7 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle("Replace existing files?")
             .setMessage(
-                "$conflicts selected file${if (conflicts == 1) "" else "s"} already " +
+                "$conflicts generated or selected variable${if (conflicts == 1) "" else "s"} already " +
                     "exist${if (conflicts == 1) "s" else ""} on $destination."
             )
             .setPositiveButton("REPLACE") { _, _ -> onReplace() }
@@ -993,6 +1006,11 @@ class MainActivity : Activity() {
         "${entry.type}:" + entry.tokenName.joinToString("") {
             "%02X".format(it.toInt() and 0xFF)
         }
+
+    private fun fileInfoKey(info: EvoFileInfo): String =
+        "${info.type}:" + (info.tokenName?.joinToString("") {
+            "%02X".format(it.toInt() and 0xFF)
+        } ?: info.displayName.orEmpty().uppercase())
 
     private fun updateActionButtons() {
         if (!::sendSelected.isInitialized) return
@@ -1057,12 +1075,14 @@ class MainActivity : Activity() {
     private fun isTransferableFilename(name: String): Boolean =
         isNativeEvoFilename(name) ||
             LegacyTiConverter.canConvertFilename(name) ||
-            EvoImageConverter.canConvertFilename(name)
+            EvoImageConverter.canConvertFilename(name) ||
+            ViewerMediaConverter.canConvertFilename(name)
 
     private fun conversionBadge(name: String): String? = when {
         isNativeEvoFilename(name) -> null
         LegacyTiConverter.canConvertFilename(name) -> "CONVERT"
         EvoImageConverter.canConvertFilename(name) -> "TO IMAGE"
+        ViewerMediaConverter.canConvertFilename(name) -> ViewerMediaConverter.displayBadge(name)
         else -> null
     }
 
