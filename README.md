@@ -6,205 +6,164 @@
 
 **Universal file transfer for TI calculators.**
 
-TI-JACK is an open-source project for moving calculator variables and programs between TI calculators and modern computers or mobile devices. The current Android hardware target is the **TI-84 Evo USB protocol** (`0451:E018`), with additional calculator families planned as the project grows.
+TI-JACK is an open-source file transfer and compatibility project for Texas Instruments calculators. The current Android transport targets the **TI-84 Evo** USB protocol, while the app and conversion layers are being built so additional TI families can use the same interface later.
 
-## Current status — Android v0.17.2
+## Current status
 
-The Evo Android path is bidirectional and has been tested on real hardware. v0.17 restored legacy TI-BASIC `.8xp` conversion with a **pure-Kotlin, strict conversion preview** and added an Evo fidelity pass for programs written around the older CE graph canvas. v0.17.1 removed the unsupported `BorderColor` token after hardware testing showed it still produced `SYNTAX ERROR`. v0.17.2 goes further and visually emulates supported standalone `BorderColor` statements on a recognized classic CE canvas instead of simply removing the effect.
+**Android v0.17.3**
+
+The Evo transfer path is working on real hardware in both directions. TI-JACK can browse calculator variables, move multiple files, resolve duplicates, delete files on either side, and verify uploads by downloading them back from the calculator. Legacy TI-BASIC conversion and phone-image import are available as compatibility previews.
 
 | Capability | Status |
 | --- | --- |
-| Detect Evo over Android USB host | Working |
+| Detect TI-84 Evo over Android USB host | Working |
 | Read calculator directory | Working |
 | Calculator → Android transfer | Working |
 | Android → calculator transfer | Working |
 | Multiple-file selection | Working |
-| Select All / Clear selection | Working |
 | Replace / skip existing files | Working |
-| Android-side file deletion | Working |
-| Calculator-side variable deletion | Working |
+| Android-side deletion | Working |
+| Calculator-side deletion with verification | Working |
 | Upload read-back verification | Working |
 | RAM / Archive display | Working |
 | Android folder picker | Working |
-| Android 15 status-bar / camera-cutout / navigation safe area | Working |
-| In-app `?` help / version / connection tips | Working |
-| Legacy `.8xp` → Evo `.8xp2` conversion | Pure-Kotlin preview; hardware testing in progress |
-| Classic 265 × 165 CE canvas centering | Implemented when the layout can be identified safely |
-| CE `BorderColor` visual emulation | Implemented for standalone 1–4 on recognized classic canvas |
-| PNG / JPG / JPEG / WebP → Evo background image | Implemented; hardware testing in progress |
-| Manual release-USB button | Removed; normal detach is automatic |
-| USB-C OTG adapter + USB-A-to-C data cable | Working repeatedly on tested Samsung + Evo |
-| Direct USB-C-to-C on tested Samsung + Evo | USB role mismatch; see connection notes below |
-| Additional TI calculator families | Planned |
+| Legacy TI-BASIC `.8xp` → Evo `.8xp2` | Preview; hardware-tested with SNAKE |
+| Classic CE canvas centering / compatibility fixes | Preview; hardware-tested with SNAKE |
+| PNG / JPG / JPEG / WebP → Evo background image | Implemented; hardware validation continuing |
+| Additional calculator families | Planned |
 
-The transfer protocol fix proven in **v0.8** sends the complete checksum-bearing Evo file, includes the variable name and type in the transfer request, and terminates the upload using the observed `S/F/A/D*/Z/B` Kermit sequence. TI-JACK then re-reads the calculator directory and downloads the uploaded variable back before reporting it as transferred.
+## Hardware setup
 
-## What you need
-
-- Android 10 or newer (`minSdk 29`)
-- A phone or tablet with USB host / OTG support
-- A supported Evo-protocol calculator
-- A known-good USB data cable
-
-For the tested Samsung + TI-84 Evo combination, direct USB-C-to-USB-C consistently starts with the phone in the wrong USB data role for TI-JACK. Repeatedly forcing **USB controlled by → Connected device** did make the calculator visible, but after several role changes the Samsung USB options stopped responding until the phone was rebooted.
-
-The reliable battery-powered field setup is:
+TI-JACK needs Android USB host/OTG mode. The reliable tested connection is:
 
 ```text
 Phone → USB-C OTG/host adapter → USB-A-to-USB-C data cable → TI-84 Evo
 ```
 
-No external power is required. A slim USB-C OTG adapter has also been tested successfully and works with the phone case. The OTG adapter must be on the **phone side**. A powered USB hub also establishes the correct host role and works reliably.
+The OTG adapter belongs on the **phone side**. No external power is required for the tested setup.
 
-Android's public `UsbManager` API lets TI-JACK communicate with the calculator only after Android is already in USB host mode. A normal third-party app cannot force the phone's USB-C host/device role itself.
+On the tested Samsung phone, a direct USB-C-to-USB-C cable normally puts the phone in the wrong USB data role. Manually changing **USB controlled by** can work, but repeated role switching can make the phone's USB controls stop responding until reboot. TI-JACK cannot force the USB-C role from a normal Android app, so the OTG/host adapter is the recommended setup.
+
+### Requirements
+
+- Android 10 or newer (`minSdk 29`)
+- USB host / OTG support
+- A supported calculator
+- A known-good USB data cable
 
 ## Using the Android app
 
-1. Plug the USB adapter into the phone, connect the calculator, and wait for `TI-84 EVO CONNECTED`.
-2. Tap **CHOOSE FOLDER** and select the Android folder containing your calculator files.
-3. Tap one or more files in the **ANDROID** pane and choose **TRANSMIT →** to copy or convert-and-copy them to the calculator.
-4. Tap one or more variables in the **CALCULATOR** pane and choose **← TRANSMIT** to copy them to Android.
-5. Use **SELECT ALL** or **CLEAR** to manage groups of selected items.
-6. Use **DELETE** on either pane to remove selected Android files or calculator variables. TI-JACK asks for confirmation before deletion.
-7. When a destination already contains the selected variable/file, choose **REPLACE** or **SKIP EXISTING**.
-8. Tap the **?** in the upper-right for the installed version, credits, conversion notes, and connection tips.
+1. Connect the calculator through the phone-side OTG/host adapter and wait for **TI-84 EVO CONNECTED**.
+2. Tap **CHOOSE FOLDER** and select the Android folder containing calculator files.
+3. Select one or more files in either pane.
+4. Tap **TRANSMIT** in the desired direction.
+5. If a destination already contains a file, choose **REPLACE** or **SKIP EXISTING**.
+6. Use **DELETE**, **SELECT ALL**, and **CLEAR** as needed.
+7. Tap **?** for the installed version, connection tips, and conversion notes.
 
-Native Evo files transfer unchanged. Legacy TI-BASIC `.8xp` files display **[CONVERT]** in the Android pane. Ordinary supported image files display **[TO IMAGE]** and are converted to an Evo background image.
+Do not unplug during an active transfer. Normal disconnect/reconnect is automatic after a transfer completes.
 
-## Conversion safety and fidelity
+## File handling
 
-TI-JACK does not send arbitrary files to the calculator. The current path is:
+### Native Evo files
+
+Native Evo variables are validated and transferred without conversion. Current recognized suffixes include:
 
 ```text
-recognize source → convert if needed → validate Evo container → transmit → read back and verify
+.8xn2 .8xl2 .8xp2 .8xd2 .8ci2 .8ca2 .8xm2 .8xy2
+.8xv2 .8xs2 .8xw2 .8xz2 .8xt2 .8xpy2 .8mp2
 ```
 
-The v0.16 native C++ converter experiment successfully produced an Evo file, but the test APK triggered a Google Play Protect warning and a converted Snake program exposed an important second issue: a structurally valid conversion can still contain commands the Evo no longer executes. v0.17 therefore moved legacy conversion to a **pure-Kotlin converter** and treats program compatibility as part of conversion rather than merely repackaging tokens.
+### Legacy TI-BASIC programs
 
-The current `.8xp` converter is intentionally strict. It validates the legacy TI file structure and checksum, converts only token mappings TI-JACK knows, creates a native Evo `.8xp2` CBOR container, validates that output, and refuses an unknown token instead of substituting a guess. Coverage will be expanded as programs are validated on real hardware.
+Legacy `.8xp` conversion is implemented in pure Kotlin; the Android APK contains no native conversion library, JNI bridge, or NDK component.
 
-### Preserving old program behavior
+The converter is intentionally fail-closed. It verifies the legacy TI file structure and checksum, maps only tokens TI-JACK knows how to convert, rebuilds a native Evo program container, validates the result, and refuses unknown or unsafe constructs instead of guessing.
 
-The conversion priority is:
+For programs built around the classic **265 × 165** color-calculator graph area, TI-JACK can preserve the original logical canvas rather than stretching it across the Evo display. When that layout is positively identified, the converter currently applies these compatibility rules:
 
-1. preserve the original operation directly when Evo supports it,
-2. translate or emulate changed features where that can be done safely,
-3. preserve the original logical canvas and **center it** when stretching would alter hard-coded drawing/collision coordinates,
-4. keep compatibility transforms outside the program's original drawing/logic area whenever possible,
-5. refuse conversion rather than silently remove behavior that could change program logic or appearance.
+- centers the original `0..264 × 0..164` logical canvas on the Evo;
+- offsets pixel-based text and collision coordinates by the same margins;
+- keeps graph-coordinate drawing in the original coordinate system;
+- emulates standalone CE `BorderColor 1`–`4` outside the original canvas because Evo does not execute `BorderColor`;
+- converts CE Dot-Thick `Pt-On(...,1,...)` / `Pt-Off(...,1)` drawing to matching explicit **3 × 3** pixel footprints so drawing and erasing rasterize identically on Evo.
 
-The first hardware fidelity target is the uploaded **SNAKE.8xp** program. It explicitly sets the classic color-calculator graph window to `0..264` by `0..164` and uses matching `Text(` / `pxl-Test(` coordinates. The converter detects that exact layout and centers the 265 × 165 logical canvas inside the Evo's larger graph area instead of stretching it. Graph-coordinate drawing remains in the legacy coordinate system, while pixel-based text/collision coordinates receive the matching center offset.
+These transforms are deliberately narrow. If TI-JACK cannot identify a layout or command safely, conversion is refused rather than silently changing program behavior.
 
-`BorderColor` is a special case. The Evo removed the old CE physical graph border, so the original command itself cannot execute. Real-hardware testing confirmed that leaving the `BorderColor` token in the converted program produces `SYNTAX ERROR`.
+### Image import
 
-v0.17.2 treats this as a visual compatibility transform. For a program whose classic 265 × 165 canvas has been positively identified, a standalone `BorderColor 1`–`4` line is replaced by two one-pixel `Line(` rectangles drawn immediately **outside** the original `0..264 × 0..164` canvas. The emulated frame lives in the new Evo margins and therefore does not overwrite the program's original graphics, text, collision coordinates, or gameplay area.
+PNG, JPG/JPEG, and WebP files can be converted locally into Evo **Image1–Image7** background-image variables (`.8ca2`). The image converter fits the source into the Evo 160 × 105 background canvas, preserves aspect ratio, converts to RGB565, writes the expected row order, and validates the generated Evo container before transmission.
 
-The CE border palette is not identical to the normal draw-color palette. TI-JACK maps Light Gray to LTGRAY, Light Blue to LTBLUE, and White to WHITE. CE `BorderColor 2` uses the special Snowy Mint / Light Madang border-only color, which is not available as a normal TI-BASIC line color; v0.17.2 uses LTGRAY as a conservative visual approximation rather than claiming an exact color match. If `BorderColor` is used in a compound statement or TI-JACK cannot safely identify the legacy canvas, conversion is refused instead of deleting the feature.
+A source named like `Image3.jpg` prefers **Image3**. Otherwise TI-JACK chooses an available image slot. Existing image variables use the normal **REPLACE / SKIP EXISTING** flow.
 
-This is a preview, not a claim that every `.8xp` is already portable. A program using an unverified token or a layout TI-JACK cannot transform safely is refused instead of being sent as a questionable conversion.
+## Transfer integrity
 
-### Phone image conversion
+Android → calculator transfers are not considered successful merely because the calculator acknowledges the USB session. TI-JACK requires the complete path to succeed:
 
-TI-JACK accepts PNG, JPG/JPEG, and WebP files and creates an Evo **Image1–Image7** background-image variable (`.8ca2`) in memory before transmission.
+```text
+recognize → validate/convert → transmit → reread directory → download back → compare bytes
+```
 
-The converter:
+For converted files, validation happens before USB transmission. Calculator-side deletion is also verified by rereading the directory and confirming the variable is gone.
 
-- fits the source onto the Evo's 160 × 105 background-image canvas,
-- preserves source aspect ratio,
-- uses a white background for unused space,
-- converts pixels to RGB565,
-- writes the calculator's expected bottom-to-top row order,
-- creates a valid Evo CBOR container and checksum,
-- then uses the normal upload and read-back verification path.
+## Evo USB protocol
 
-A source named like `Image3.jpg` prefers **Image3**. Otherwise TI-JACK chooses the next free Image slot. If the chosen slot already exists, the normal **REPLACE / SKIP EXISTING** dialog is used. A single batch is limited to seven ordinary images because the Evo has seven background-image slots.
+The current hardware target is:
 
-## USB connection notes
+```text
+VID: 0451
+PID: E018
+Transport: CDC/ACM, 115200 baud
+```
 
-On the tested Samsung phone:
-
-- Repeated connect/disconnect cycles are stable when the USB role is not manually changed.
-- Direct C-to-C attaches with **USB controlled by: This device**, so TI-JACK cannot enumerate the Evo.
-- Manually changing to **Connected device** makes TI-JACK work, but repeated role swaps can wedge the Samsung USB stack until reboot.
-- A genuine USB-C OTG/host adapter correctly puts the phone in host mode from initial attachment.
-- With that OTG adapter and a known-good USB-A-to-C data cable, the Evo reconnects automatically and TI-JACK's transfer functions work normally.
-- Putting the OTG adapter on the calculator side does not establish the needed phone host role.
-- A USB hub produces the same good host-mode behavior and is useful as a diagnostic, but it is not required for field use.
-
-The app's disconnected message is intentionally written for nontechnical users: **Make sure the USB adapter is plugged into your phone, then reconnect the calculator.**
-
-Do not unplug during an active transfer. Once a transfer completes, normal physical disconnect/reconnect is supported; there is no manual **RELEASE USB** step.
-
-## Transfer verification
-
-A successful Android → calculator transfer must pass all of the following before the app counts it as transferred:
-
-1. The input is a valid native Evo file or is successfully converted into one.
-2. TI-JACK validates the Evo container and checksum.
-3. The calculator acknowledges the Kermit upload session.
-4. The variable appears in a fresh calculator directory read.
-5. TI-JACK downloads that variable back from the calculator.
-6. The downloaded file matches the file that was sent.
-
-Calculator-side deletion is also verified by re-reading the calculator directory after the delete transaction before reporting success.
+Uploads use the observed Kermit `S/F/A/D*/Z/B` exchange. Directory, upload, download, delete, framing, and verification details are documented in [`PROTOCOL_NOTES.md`](PROTOCOL_NOTES.md).
 
 ## Building
 
-Open the repository as an Android Studio project and let Gradle sync.
+Open the repository in Android Studio or build with Gradle.
 
-The Android app currently uses:
+Current Android configuration:
 
-- compile / target SDK 35
-- min SDK 29
-- Kotlin / Java 17
-- `usb-serial-for-android` 3.11.0
-- Android `DocumentFile` folder access
-- pure-Kotlin Evo/legacy conversion code; **no native converter or NDK is required in v0.17.2**
+```text
+compileSdk / targetSdk: 35
+minSdk: 29
+Java / Kotlin target: 17
+usb-serial-for-android: 3.11.0
+androidx.documentfile: 1.0.1
+```
 
-Conversion happens locally on the phone and requires no Internet connection.
+The app does not need Internet access for file conversion or calculator transfers.
 
-### GitHub Actions
-
-The included workflow is:
+GitHub Actions builds every push to `main` with:
 
 ```text
 .github/workflows/build-debug-apk.yml
 ```
 
-Every push to `main` builds the debug APK and publishes it as:
+The current artifact is named:
 
 ```text
-TI-JACK-Evo-Android-v0.17.2
+TI-JACK-Evo-Android-v0.17.3
 ```
 
-## Protocol notes
+## Known limitations
 
-The Android USB implementation is native Kotlin code for the observed Evo USB/Kermit behavior. File conversion happens before the USB layer and does not change the proven transfer protocol.
-
-The current calculator USB identity is:
-
-```text
-VID 0451
-PID E018
-CDC/ACM 115200 baud
-```
-
-Protocol research and implementation notes live in `PROTOCOL_NOTES.md`.
-
-## Diagnostics
-
-The app shows short user-facing status guidance directly in the UI and writes an internal log named `ti_jack_evo_android.log` inside the app's private files directory.
-
-## Credits
-
-TI-JACK project: **Jawatech / jeremymfrank**. Android USB serial support is provided by the open-source `usb-serial-for-android` library. The legacy/Evo format work was cross-checked against the MIT-licensed `tivars_lib_cpp` Evo research by Adrien "Adriweb" Bertrand; v0.17.2 does **not** bundle that native library. See `THIRD_PARTY_NOTICES.md`.
-
-TI-JACK is an independent project and is not affiliated with or endorsed by Texas Instruments.
-
-## Roadmap
-
-Near-term work includes expanding the pure-Kotlin token compatibility table from real program tests, improving compatibility/emulation fidelity, validating image import on hardware, adding image preview/crop controls, and adding additional TI calculator protocols behind the same transfer UI.
+- The Android USB transport currently targets the TI-84 Evo; other calculator transports are not implemented yet.
+- Legacy `.8xp` conversion does not yet cover every TI-BASIC token or every CE/Evo behavioral difference.
+- CE `BorderColor 2` uses a border-only color with no exact normal Evo drawing-color equivalent, so its emulated frame uses a conservative approximation.
+- Image import is implemented but is still receiving real-hardware validation.
+- Direct USB-C-to-USB-C behavior depends on the phone's USB role; use a phone-side OTG/host adapter for the tested reliable setup.
 
 ## Project direction
 
-TI-JACK is intended to become one transfer tool rather than a separate utility for every calculator generation. The UI, file-selection model, conflict handling, conversion layer, deletion workflow, and verification layer are being kept calculator-agnostic while protocol-specific transports are added underneath.
+TI-JACK is intended to become one transfer application rather than a separate utility for every TI calculator generation. File selection, duplicate handling, conversion, deletion, validation, and verification are kept separate from calculator-specific transports so new calculator families can be added underneath the same workflow.
+
+Near-term work is focused on expanding legacy conversion from real program tests, improving visual/behavioral fidelity, completing image-import validation, and adding more TI calculator protocols.
+
+## Credits
+
+TI-JACK project: **Jawatech / jeremymfrank**.
+
+Android USB serial support is provided by the MIT-licensed `usb-serial-for-android` project. Evo file/token research was cross-checked against Adrien "Adriweb" Bertrand's MIT-licensed `tivars_lib_cpp`; the current Android APK does **not** bundle that native library. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+TI-JACK is an independent project and is not affiliated with or endorsed by Texas Instruments.
