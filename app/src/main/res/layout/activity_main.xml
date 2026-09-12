@@ -39,7 +39,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="EVO / ANDROID TRANSFER TEST 0.14.1"
+        android:text="EVO / ANDROID TRANSFER TEST 0.15"
         android:textColor="@color/amber_dim"
         android:textSize="11sp"
         android:gravity="center"
@@ -296,6 +296,20 @@
             android:textStyle="bold"
             android:textColor="@color/bg"
             android:backgroundTint="@color/amber"
+            android:minHeight="0dp"
+            android:minWidth="0dp" />
+
+        <Button
+            android:id="@+id/deleteCalculatorSelected"
+            android:layout_width="0dp"
+            android:layout_height="30dp"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:text="DELETE"
+            android:textSize="9sp"
+            android:textStyle="bold"
+            android:textColor="@color/bg"
+            android:backgroundTint="@color/red"
             android:minHeight="0dp"
             android:minWidth="0dp" />
     </LinearLayout>
