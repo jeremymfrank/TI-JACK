@@ -56,10 +56,11 @@ class HelpButton @JvmOverloads constructor(
         • Current Evo files transfer normally.
         • Legacy .8xp conversion is available as a pure-Kotlin preview; no native converter is included.
         • Programs using the classic 265 × 165 CE graph canvas are centered on the Evo when TI-JACK can identify that layout safely.
-        • CE BorderColor has no direct Evo equivalent. On a recognized classic canvas, TI-JACK emulates it with a frame outside the original drawing area.
-        • CE Dot-Thick point drawing on a recognized classic canvas is converted to an exact 3 × 3 pixel footprint so drawing and erasing use the same pixels on Evo.
-        • PNG, JPG, JPEG, and WebP images are converted to Evo Image1–Image7 background images while preserving proportions.
         • A token or layout TI-JACK cannot convert safely is refused instead of guessed.
+        • PNG, JPG, JPEG, and WebP files with ordinary names become named IM8C .8xv2 AppVars for custom viewing. Example: FMRLOGO.png becomes FMRLOGO.
+        • Animated GIFs become IM8C frame AppVars plus a TIJGIF01 timing/loop manifest for the separate viewer project. Frames are sent before the manifest.
+        • Name a still source Image1 through Image7 (or Img1 through Img7) to use the older graph-background .8ca2 slot instead.
+        • Viewer-media conversion preserves aspect ratio; GIF preparation currently supports up to 120 frames and 6 MB of generated variables.
 
         CONNECTION TIPS
         • Plug the USB-C adapter into the phone, then connect the calculator with a USB data cable.
