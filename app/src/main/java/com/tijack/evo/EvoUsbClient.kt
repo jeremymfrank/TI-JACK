@@ -108,6 +108,57 @@ internal class EvoUsbClient(
         file
     }
 
+    fun deleteVariable(entry: EvoEntry) = withSession {
+        require(entry.tokenName.isNotEmpty()) {
+            "calculator did not provide a token name for ${entry.name}"
+        }
+        val encodedName = EvoFileCodec.urlEncodeTokenName(entry.tokenName)
+        require(encodedName.isNotBlank()) { "Evo variable name is empty" }
+
+        val url = "hh01/del/var?name=$encodedName&type=${entry.type}"
+        log(
+            "delete request ${entry.name} type=${entry.type} " +
+                "name=$encodedName"
+        )
+
+        // The Evo delete endpoint uses the same PUT-style Kermit transaction
+        // as uploads, with a one-byte NUL payload.
+        putRequest(url, byteArrayOf(0x00))
+
+        // Do not report success from the ACK alone. Wait for the directory to
+        // update and verify that the exact type/token-name identity is gone.
+        SystemClock.sleep(120)
+        var lastError: Throwable? = null
+        for (attempt in 1..3) {
+            try {
+                val stillPresent = listFiles().any {
+                    it.type == entry.type && it.tokenName.contentEquals(entry.tokenName)
+                }
+                if (!stillPresent) {
+                    log("delete verified ${entry.name} type=${entry.type}")
+                    return@withSession
+                }
+            } catch (t: Throwable) {
+                lastError = t
+                log(
+                    "delete verification directory attempt $attempt/3 failed: " +
+                        t.message.orEmpty()
+                )
+            }
+            SystemClock.sleep(120L * attempt)
+        }
+
+        if (lastError != null) {
+            throw IOException(
+                "delete was acknowledged but verification could not read the calculator directory",
+                lastError
+            )
+        }
+        throw IOException(
+            "delete was acknowledged but ${entry.name} still appears on the calculator"
+        )
+    }
+
     fun uploadVariable(
         file: ByteArray,
         overwrite: Boolean
@@ -242,7 +293,7 @@ internal class EvoUsbClient(
         val wire = Kermit.encode(payload)
         val chunks = Kermit.splitEncoded(wire, session.dataChunkSize)
         log(
-            "upload payload=${payload.size} encoded=${wire.size} " +
+            "PUT payload=${payload.size} encoded=${wire.size} " +
                 "chunks=${chunks.size}"
         )
         for (chunk in chunks) {
@@ -252,7 +303,7 @@ internal class EvoUsbClient(
         sendExpectAck(serial, sequence++, 'Z', byteArrayOf(), session)
         sendExpectAck(serial, sequence, 'B', byteArrayOf(), session)
 
-        // The observed Evo upload transaction ends here: S/F/A/D*/Z/B,
+        // The observed Evo PUT transaction ends here: S/F/A/D*/Z/B,
         // with a Y acknowledgment for every outbound packet. Unlike GET,
         // PUT does not start a second server-to-client Kermit response session.
         // Waiting for one leaves the link in the wrong state and can interfere
