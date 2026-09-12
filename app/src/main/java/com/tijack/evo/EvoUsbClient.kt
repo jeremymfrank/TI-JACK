@@ -32,9 +32,13 @@ internal class EvoUsbClient(
 
     private var connection: UsbDeviceConnection? = null
     private var port: UsbSerialPort? = null
+    private var sessionDepth = 0
     private val rx = ArrayList<Byte>()
 
+    @Synchronized
     fun open() {
+        if (port != null) return
+
         require(device.vendorId == TI_VID && device.productId == EVO_PID) {
             "not a TI-84 Evo USB device"
         }
@@ -82,13 +86,13 @@ internal class EvoUsbClient(
         }
     }
 
-    fun listFiles(): List<EvoEntry> {
+    fun listFiles(): List<EvoEntry> = withSession {
         val raw = getRequest(DIRECTORY_URL)
         log("directory payload ${raw.size} bytes")
-        return EvoDirectory.parse(raw)
+        EvoDirectory.parse(raw)
     }
 
-    fun downloadVariable(entry: EvoEntry): ByteArray {
+    fun downloadVariable(entry: EvoEntry): ByteArray = withSession {
         require(entry.tokenName.isNotEmpty()) {
             "calculator did not provide a token name for ${entry.name}"
         }
@@ -101,13 +105,13 @@ internal class EvoUsbClient(
             "downloaded ${entry.name} type=${entry.type} " +
                 "${file.size} bytes"
         )
-        return file
+        file
     }
 
     fun uploadVariable(
         file: ByteArray,
         overwrite: Boolean
-    ): EvoUploadResult {
+    ): EvoUploadResult = withSession {
         val info = EvoFileCodec.inspect(file)
         val tokenName = info.tokenName
         require(tokenName != null && tokenName.isNotEmpty()) {
@@ -140,7 +144,7 @@ internal class EvoUsbClient(
                 "payload=${file.size} bytes to " +
                 if (archive) "Archive" else "RAM"
         )
-        return EvoUploadResult(info, archive)
+        EvoUploadResult(info, archive)
     }
 
     private fun verifyUpload(
@@ -551,7 +555,20 @@ internal class EvoUsbClient(
         }
     }
 
-    override fun close() {
+    private inline fun <T> withSession(block: () -> T): T {
+        val outermost = sessionDepth == 0
+        if (outermost) open()
+        sessionDepth++
+        try {
+            return block()
+        } finally {
+            sessionDepth = (sessionDepth - 1).coerceAtLeast(0)
+            if (outermost) closePort()
+        }
+    }
+
+    @Synchronized
+    private fun closePort() {
         val serial = port
         if (serial != null) {
             try {
@@ -574,5 +591,11 @@ internal class EvoUsbClient(
         port = null
         connection = null
         rx.clear()
+        if (serial != null) log("CDC closed; USB idle")
+    }
+
+    override fun close() {
+        sessionDepth = 0
+        closePort()
     }
 }
