@@ -22,7 +22,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="EVO / ANDROID TRANSFER TEST 0.10"
+        android:text="EVO / ANDROID TRANSFER TEST 0.11"
         android:textColor="@color/amber_dim"
         android:textSize="11sp"
         android:gravity="center"
@@ -58,23 +58,12 @@
         android:gravity="center"
         android:maxLines="3"
         android:layout_marginTop="3dp"
-        android:layout_marginBottom="4dp" />
-
-    <com.tijack.evo.ReleaseUsbButton
-        android:layout_width="match_parent"
-        android:layout_height="30dp"
-        android:text="RELEASE USB BEFORE UNPLUG"
-        android:textSize="8sp"
-        android:textStyle="bold"
-        android:textColor="@color/bg"
-        android:backgroundTint="@color/amber_dim"
-        android:minHeight="0dp"
-        android:layout_marginBottom="4dp" />
+        android:layout_marginBottom="5dp" />
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="TAP FILES TO SELECT · USE BUTTONS TO TRANSFER SELECTION"
+        android:text="READY = USB IDLE · SAFE TO UNPLUG · TAP FILES TO SELECT"
         android:textColor="@color/amber_dim"
         android:textSize="8sp"
         android:gravity="center"
