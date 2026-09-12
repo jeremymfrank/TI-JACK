@@ -3,12 +3,17 @@ package com.tijack.evo
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbManager
+import android.os.SystemClock
 import com.hoho.android.usbserial.driver.CdcAcmSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.IOException
-import android.os.SystemClock
+
+internal data class EvoUploadResult(
+    val info: EvoFileInfo,
+    val archived: Boolean
+)
 
 internal class EvoUsbClient(
     private val usbManager: UsbManager,
@@ -36,16 +41,14 @@ internal class EvoUsbClient(
 
         log(
             "USB ${"%04X".format(device.vendorId)}:" +
-            "${"%04X".format(device.productId)} " +
-            "interfaces=${device.interfaceCount}"
+                "${"%04X".format(device.productId)} " +
+                "interfaces=${device.interfaceCount}"
         )
 
         val conn = usbManager.openDevice(device)
             ?: error("Android could not open the Evo USB device")
 
         try {
-            // Force CDC/ACM for the known Evo VID/PID instead of depending on
-            // generic device-class probing.
             val driver = CdcAcmSerialDriver(device)
             val serialPort = driver.ports.firstOrNull()
                 ?: error("Evo CDC driver exposed no serial ports")
@@ -58,18 +61,12 @@ internal class EvoUsbClient(
                 UsbSerialPort.PARITY_NONE
             )
 
-            // Match the ordinary CDC control-line state produced by desktop
-            // serial stacks such as pyserial. Some Android USB hosts leave
-            // these deasserted unless the app explicitly enables them.
             try {
                 serialPort.setDTR(true)
                 serialPort.setRTS(true)
                 log("CDC DTR/RTS asserted")
             } catch (t: Throwable) {
-                log(
-                    "CDC control-line warning: " +
-                    t.message.orEmpty()
-                )
+                log("CDC control-line warning: ${t.message.orEmpty()}")
             }
 
             connection = conn
@@ -91,15 +88,110 @@ internal class EvoUsbClient(
         return EvoDirectory.parse(raw)
     }
 
-    private fun getRequest(url: String): ByteArray {
+    fun downloadVariable(entry: EvoEntry): ByteArray {
+        require(entry.tokenName.isNotEmpty()) {
+            "calculator did not provide a token name for ${entry.name}"
+        }
+        val encodedName = EvoFileCodec.urlEncodeTokenName(entry.tokenName)
+        val url =
+            "hh01/get/hh01/xfr/var?name=$encodedName&type=${entry.type}"
+        val body = getRequest(url)
+        val file = EvoFileCodec.appendChecksum(body)
+        log(
+            "downloaded ${entry.name} type=${entry.type} " +
+                "${file.size} bytes"
+        )
+        return file
+    }
+
+    fun uploadVariable(
+        file: ByteArray,
+        overwrite: Boolean
+    ): EvoUploadResult {
+        val info = EvoFileCodec.inspect(file)
+        var archive = info.type in setOf(4, 5, 18)
+
+        try {
+            putVariable(file, archive, overwrite)
+        } catch (first: Throwable) {
+            val text = first.message.orEmpty()
+            if (!archive && ("PM" in text || "DP" in text)) {
+                log(
+                    "RAM target rejected type=${info.type}; " +
+                        "retrying Archive"
+                )
+                archive = true
+                putVariable(file, archive, overwrite)
+            } else {
+                throw first
+            }
+        }
+
+        log(
+            "uploaded type=${info.type} ${file.size} bytes to " +
+                if (archive) "Archive" else "RAM"
+        )
+        return EvoUploadResult(info, archive)
+    }
+
+    private fun putVariable(
+        file: ByteArray,
+        archive: Boolean,
+        overwrite: Boolean
+    ) {
+        val memTarget = if (archive) 1 else 0
+        val policy = if (overwrite) 1 else 0
+        putRequest(
+            "hh01/xfr/var?memtarget=$memTarget&policy=$policy",
+            file
+        )
+    }
+
+    private fun putRequest(url: String, payload: ByteArray) {
         val serial = requireNotNull(port) { "serial port is not open" }
+        drainInput(40)
         val session = Kermit.Session()
         var sequence = 0
 
         val attributes =
             Kermit.fileAttribute('"', "B8") +
-            Kermit.fileAttribute('1', "1") +
-            Kermit.fileAttribute('@')
+                Kermit.fileAttribute('1', payload.size.toString()) +
+                Kermit.fileAttribute('@')
+
+        sendExpectAck(serial, sequence++, 'S', Kermit.sendInit, session)
+        sendExpectAck(
+            serial,
+            sequence++,
+            'F',
+            url.toByteArray(Charsets.UTF_8),
+            session
+        )
+        sendExpectAck(serial, sequence++, 'A', attributes, session)
+
+        val wire = Kermit.encode(payload)
+        val chunks = Kermit.splitEncoded(wire, session.dataChunkSize)
+        log(
+            "upload payload=${payload.size} encoded=${wire.size} " +
+                "chunks=${chunks.size}"
+        )
+        for (chunk in chunks) {
+            sendExpectAck(serial, sequence++, 'D', chunk, session)
+        }
+
+        sendExpectAck(serial, sequence++, 'Z', byteArrayOf(), session)
+        sendExpectAck(serial, sequence, 'B', byteArrayOf(), session)
+    }
+
+    private fun getRequest(url: String): ByteArray {
+        val serial = requireNotNull(port) { "serial port is not open" }
+        drainInput(40)
+        val session = Kermit.Session()
+        var sequence = 0
+
+        val attributes =
+            Kermit.fileAttribute('"', "B8") +
+                Kermit.fileAttribute('1', "1") +
+                Kermit.fileAttribute('@')
 
         sendExpectAck(serial, sequence++, 'S', Kermit.sendInit, session)
         sendExpectAck(
@@ -121,6 +213,9 @@ internal class EvoUsbClient(
         sendExpectAck(serial, sequence, 'B', byteArrayOf(), session)
 
         val serverInit = readPacket(serial, session, TIMEOUT_MS)
+        if (serverInit.type == 'E') {
+            throw IOException("calculator error: ${errorText(serverInit.data)}")
+        }
         require(serverInit.type == 'S') {
             "expected server S packet, got ${serverInit.type}"
         }
@@ -136,6 +231,9 @@ internal class EvoUsbClient(
 
         for (expected in charArrayOf('F', 'A')) {
             val packet = readPacket(serial, session, TIMEOUT_MS)
+            if (packet.type == 'E') {
+                throw IOException("calculator error: ${errorText(packet.data)}")
+            }
             require(packet.type == expected) {
                 "expected server $expected packet, got ${packet.type}"
             }
@@ -155,10 +253,7 @@ internal class EvoUsbClient(
         while (true) {
             val packet = readPacket(serial, session, TIMEOUT_MS)
             if (packet.type == 'E') {
-                throw IOException(
-                    "calculator error: " +
-                    packet.data.toString(Charsets.UTF_8)
-                )
+                throw IOException("calculator error: ${errorText(packet.data)}")
             }
 
             writePacket(
@@ -172,10 +267,15 @@ internal class EvoUsbClient(
             )
 
             if (packet.type == 'Z') break
-            encoded.write(packet.data)
+            if (packet.type == 'D') {
+                encoded.write(packet.data)
+            }
         }
 
         val end = readPacket(serial, session, TIMEOUT_MS)
+        if (end.type == 'E') {
+            throw IOException("calculator error: ${errorText(end.data)}")
+        }
         if (end.type == 'B') {
             writePacket(
                 serial,
@@ -218,14 +318,13 @@ internal class EvoUsbClient(
                 }
                 'E' -> {
                     throw IOException(
-                        "calculator error on $type: " +
-                        reply.data.toString(Charsets.UTF_8)
+                        "calculator error on $type: ${errorText(reply.data)}"
                     )
                 }
                 else -> {
                     log(
                         "packet $type/$sequence got ${reply.type}; " +
-                        "retry ${attempt + 1}/3"
+                            "retry ${attempt + 1}/3"
                     )
                     drainInput(80)
                 }
@@ -233,6 +332,43 @@ internal class EvoUsbClient(
         }
 
         error("packet $type/$sequence was not acknowledged")
+    }
+
+    private fun errorText(data: ByteArray): String {
+        val text = data.toString(Charsets.UTF_8).trim()
+        val message = when (text) {
+            "PM" -> "PARAM"
+            "NP" -> "NOPORT"
+            "NM" -> "NOMEM"
+            "FL" -> "FLASH"
+            "IN" -> "INVALID"
+            "NC" -> "NOTFOUND_CLI"
+            "NF" -> "NOTFOUND_SRV"
+            "CN" -> "CANCEL"
+            "TO" -> "TIMEOUT"
+            "DI" -> "DISCONNECT"
+            "UN" -> "UNSUPPORTED_REQUEST"
+            "NV" -> "VERSION_TOO_NEW"
+            "VE" -> "VAR_EXISTS"
+            "DP" -> "INVALID_DATA_PAYLOAD"
+            "BZ" -> "CALCULATOR_BUSY"
+            "LB" -> "LOW_BATT"
+            "WT" -> "WAIT_USER"
+            "OW" -> "USER_OVERWRITE"
+            "OA" -> "USER_OVERWRITE_ALL"
+            "OM" -> "USER_OMIT"
+            "QU" -> "USER_QUIT"
+            "NR" -> "USER_NOT_IN_RECEIVE"
+            "DR" -> "DEFRAG_INITIATED"
+            else -> null
+        }
+        return when {
+            text.isBlank() -> data.joinToString("") {
+                "%02X".format(it.toInt() and 0xFF)
+            }
+            message != null -> "$text ($message)"
+            else -> text
+        }
     }
 
     private fun writePacket(
@@ -254,10 +390,7 @@ internal class EvoUsbClient(
                 try {
                     return Kermit.parsePacket(raw, session)
                 } catch (t: Throwable) {
-                    log(
-                        "discarding malformed packet: " +
-                        t.message.orEmpty()
-                    )
+                    log("discarding malformed packet: ${t.message.orEmpty()}")
                 }
             }
 
@@ -279,13 +412,10 @@ internal class EvoUsbClient(
                     }
                 }
             } catch (t: Throwable) {
-                // usb-serial-for-android can signal a short read timeout with
-                // an exception on some Android/USB stacks. Keep waiting until
-                // our overall packet deadline before treating it as failure.
                 val text = (
                     t.javaClass.simpleName + " " +
-                    t.message.orEmpty()
-                ).lowercase()
+                        t.message.orEmpty()
+                    ).lowercase()
                 if (
                     "timeout" !in text &&
                     t !is IOException
@@ -299,7 +429,7 @@ internal class EvoUsbClient(
     private fun extractRawPacket(): ByteArray? {
         if (rx.isEmpty()) return null
 
-        var start = rx.indexOfFirst {
+        val start = rx.indexOfFirst {
             (it.toInt() and 0xFF) == Kermit.SOH
         }
         if (start < 0) {
@@ -309,7 +439,6 @@ internal class EvoUsbClient(
 
         if (start > 0) {
             repeat(start) { rx.removeAt(0) }
-            start = 0
         }
 
         val end = rx.indexOfFirst {
