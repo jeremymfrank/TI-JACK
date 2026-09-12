@@ -22,7 +22,7 @@ The Evo Android path is bidirectional and has been tested on real hardware.
 | Select All / Clear selection | Working |
 | Replace / skip existing files | Working |
 | Android-side file deletion | Working |
-| Calculator-side variable deletion | Working and verified on hardware |
+| Calculator-side variable deletion | Working |
 | Upload read-back verification | Working |
 | RAM / Archive display | Working |
 | Android folder picker | Working |
