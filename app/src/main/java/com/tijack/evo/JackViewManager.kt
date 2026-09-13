@@ -7,6 +7,7 @@ package com.tijack.evo
  */
 internal object JackViewManager {
     private const val APPVAR_TYPE = 8
+    private const val PYTHON_TYPE = 15
     private const val MAX_SCAN_SIZE = 70_000L
     private const val JACKVIEW_NAME = "JACKVIEW"
     private const val JACKCAT_NAME = "JACKCAT"
@@ -35,7 +36,7 @@ internal object JackViewManager {
 
         val imageNames = LinkedHashSet<String>()
         val manifests = ArrayList<GifManifest>()
-        var scanFailed = false
+        val skippedAppVars = ArrayList<String>()
 
         val candidates = entries.filter {
             it.type == APPVAR_TYPE &&
@@ -55,14 +56,19 @@ internal object JackViewManager {
                     }
                 }
             } catch (t: Throwable) {
-                scanFailed = true
-                log("JACKCAT scan skipped ${entry.name}: ${t.message.orEmpty()}")
+                skippedAppVars += entry.name
+                log("JACKCAT ignored unreadable AppVar ${entry.name}: ${t.message.orEmpty()}")
             }
         }
 
-        if (scanFailed) {
-            log("JACKCAT scan incomplete; existing catalog left unchanged")
-            return changed
+        // An unrelated or protected AppVar must never prevent JACKCAT from being
+        // created. This was the v0.19.1 failure mode: one unreadable type-8
+        // variable aborted the entire scan, so JACKVIEW had no catalog at all.
+        if (skippedAppVars.isNotEmpty()) {
+            log(
+                "JACKCAT continuing after ${skippedAppVars.size} unreadable AppVar" +
+                    if (skippedAppVars.size == 1) "" else "s"
+            )
         }
 
         val media = ArrayList<MediaItem>()
@@ -80,7 +86,10 @@ internal object JackViewManager {
         // first JACKVIEW hardware-test files. TI-JACK frame names are six
         // characters plus a two-digit hexadecimal frame number.
         val grouped = imageNames
-            .filter { it !in consumedFrames && Regex("^[A-Z][A-Z0-9_]{5}[0-9A-F]{2}$").matches(it) }
+            .filter {
+                it !in consumedFrames &&
+                    Regex("^[A-Z][A-Z0-9_]{5}[0-9A-F]{2}$").matches(it)
+            }
             .groupBy { it.take(6) }
         for ((prefix, names) in grouped) {
             val available = names.toHashSet()
@@ -105,7 +114,27 @@ internal object JackViewManager {
         val catalogSource = buildCatalogSource(ordered)
         val jackCat = EvoPythonPackager.build(JACKCAT_NAME, catalogSource)
         changed = syncVariable(client, entries, jackCat, JACKCAT_NAME, log) || changed
-        log("JACKCAT cataloged ${ordered.size} media item${if (ordered.size == 1) "" else "s"}")
+
+        // Verify JACKCAT itself is now present. Do not let the UI claim a sync
+        // completed merely because no exception escaped the scan loop.
+        val catalogInfo = EvoFileCodec.inspect(jackCat)
+        val refreshed = client.listFiles()
+        require(refreshed.any { EvoFileCodec.sameIdentity(catalogInfo, it) }) {
+            "JACKCAT upload completed but JACKCAT is missing from the calculator directory"
+        }
+        require(refreshed.any { it.type == PYTHON_TYPE && it.name.equals(JACKVIEW_NAME, true) }) {
+            "JACKVIEW is missing from the calculator directory after sync"
+        }
+
+        val skippedText = if (skippedAppVars.isEmpty()) {
+            ""
+        } else {
+            " · skipped AppVars: ${skippedAppVars.joinToString(",")}"
+        }
+        log(
+            "JACKCAT cataloged ${ordered.size} media item" +
+                (if (ordered.size == 1) "" else "s") + skippedText
+        )
         return changed
     }
 
