@@ -160,7 +160,7 @@ internal object JackViewManager {
         var offset = 20
         repeat(frameCount) {
             val raw = core.copyOfRange(offset, offset + 8)
-            val end = raw.indexOf(0).let { if (it < 0) raw.size else it }
+            val end = raw.indexOf(0.toByte()).let { if (it < 0) raw.size else it }
             val name = raw.copyOfRange(0, end).toString(Charsets.US_ASCII)
             if (!Regex("^[A-Z][A-Z0-9_]{0,7}$").matches(name)) return null
             names += name
