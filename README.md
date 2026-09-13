@@ -10,9 +10,11 @@ TI-JACK is an open-source file transfer and compatibility project for Texas Inst
 
 ## Current status
 
-**Android v0.19 preview**
+**Android v0.19.1 preview**
 
-The Evo transfer path works on real hardware in both directions. TI-JACK can browse calculator variables, transfer multiple files, replace or skip duplicates, delete files on either side, and verify uploads by downloading them back from the calculator. Legacy TI-BASIC conversion, named image/GIF preparation, and the first bundled JACKVIEW workflow are active compatibility previews.
+The Evo transfer path works on real hardware in both directions. TI-JACK can browse calculator variables, transfer multiple files, replace or skip duplicates, delete files on either side, and verify uploads by downloading them back from the calculator. Legacy TI-BASIC conversion, named image/GIF preparation, and the bundled JACKVIEW workflow are active compatibility previews.
+
+v0.19.1 fixes the first v0.19 integration build so the JACKVIEW/JACKCAT manager is actually invoked on calculator connection and after calculator uploads/deletions. JACKCAT is therefore regenerated from the calculator's current viewer-media AppVars instead of merely having the sync code present but unused.
 
 | Capability | Status |
 | --- | --- |
@@ -32,7 +34,7 @@ The Evo transfer path works on real hardware in both directions. TI-JACK can bro
 | Named PNG / JPG / JPEG / WebP → IM8C `.8xv2` | Preview; hardware-tested IM8C display path |
 | Animated GIF → IM8C frames + `TIJGIF01` manifest | Preview; frame playback hardware-tested |
 | Bundled calculator-side `JACKVIEW` | Preview; browser/player source hardware-tested |
-| Automatic `JACKCAT` regeneration | Preview; Android integration awaiting hardware validation |
+| Automatic `JACKCAT` regeneration | Preview; v0.19.1 integration ready for hardware validation |
 | Explicit `Image1`–`Image7` graph-background import | Implemented |
 | Additional calculator families | Planned |
 
@@ -92,13 +94,14 @@ These transforms are deliberately narrow. If TI-JACK cannot identify a layout or
 
 `JACKVIEW` is the calculator-side image browser/player bundled with TI-JACK. TI-JACK owns media preparation and the catalog; JACKVIEW stays small and uses Evo Python's native `ti_graphics.drawImage()` path instead of decoding pixels in Python.
 
-On a normal top-level calculator directory refresh, TI-JACK now:
+On calculator connection and after calculator-side media changes, TI-JACK:
 
 1. installs or updates `JACKVIEW.8xpy2` when needed;
 2. scans Evo AppVars small enough to contain IM8C images or TI-JACK GIF manifests;
 3. identifies static IM8C images and complete GIF frame sets;
 4. regenerates `JACKCAT.8xpy2` from media actually present on the calculator;
-5. uploads JACKCAT only when its generated contents changed.
+5. uploads JACKCAT only when its generated contents changed;
+6. rereads the calculator directory when JACKVIEW or JACKCAT changed so the Android pane reflects the installed companion files.
 
 This means adding or deleting viewer images through TI-JACK causes JACKCAT to follow the calculator automatically. A failed/incomplete AppVar scan does **not** replace the previous catalog.
 
@@ -181,10 +184,10 @@ GitHub Actions builds pushes to the active test branch and `main` with:
 .github/workflows/build-debug-apk.yml
 ```
 
-The v0.19 preview artifact is named:
+The current preview artifact is named:
 
 ```text
-TI-JACK-Evo-Android-v0.19
+TI-JACK-Evo-Android-v0.19.1
 ```
 
 ## Known limitations
@@ -192,7 +195,7 @@ TI-JACK-Evo-Android-v0.19
 - The Android USB transport currently targets the TI-84 Evo; other calculator transports are not implemented yet.
 - Legacy `.8xp` conversion does not yet cover every TI-BASIC token or every CE/Evo behavioral difference.
 - The current pixel-exact SNAKE compatibility pass removes turn artifacts but has been observed to make movement slower; that optimization remains active work.
-- JACKVIEW/JACKCAT automatic synchronization is new in v0.19 and still needs real-calculator validation as an integrated workflow.
+- JACKVIEW/JACKCAT automatic synchronization is still undergoing real-calculator validation as an integrated workflow.
 - JACKCAT catalogs IM8C AppVars that JACKVIEW can display; TI OS `Image1`–`Image7` background variables are a separate format and are intentionally excluded.
 - Direct USB-C-to-USB-C behavior depends on the phone's USB role; use a phone-side OTG/host adapter for the tested reliable setup.
 
