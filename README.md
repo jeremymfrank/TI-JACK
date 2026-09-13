@@ -119,7 +119,7 @@ Ordinary `PNG`, `JPG`, `JPEG`, and `WebP` files become named Evo IM8C AppVars (`
 Example:
 
 ```text
-FMRLOGO.png -> FMRLOGO
+LOGO.png -> LOGO
 ```
 
 TI-JACK:
