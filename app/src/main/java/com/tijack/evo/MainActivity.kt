@@ -265,14 +265,15 @@ class MainActivity : Activity() {
                 closeClient()
                 localClient = EvoUsbClient(usbManager, device, ::appendLog)
                 localClient.open()
-                val entries = sortedEntries(localClient.listFiles())
+                val listed = sortedEntries(localClient.listFiles())
+                val entries = syncJackViewCatalog(localClient, listed)
                 client = localClient
                 localClient = null
                 calculatorEntries = entries
                 runOnUiThread {
                     connecting = false
                     renderCalculatorEntries(entries)
-                    setReady("${entries.size} VARIABLES · 0451:E018 · CDC 115200")
+                    setReady("${entries.size} VARIABLES · JACKVIEW CATALOG SYNCED")
                 }
             } catch (t: Throwable) {
                 try { localClient?.close() } catch (_: Throwable) {}
@@ -595,7 +596,7 @@ class MainActivity : Activity() {
             }
 
             val refreshed = try {
-                sortedEntries(activeClient.listFiles())
+                syncJackViewCatalog(activeClient, sortedEntries(activeClient.listFiles()))
             } catch (t: Throwable) {
                 appendLog("POST-DELETE LIST ERROR ${t.message.orEmpty()}")
                 calculatorEntries.filterNot { calculatorKey(it) in deletedKeys }
@@ -607,7 +608,7 @@ class MainActivity : Activity() {
                 selectedCalculator.clear()
                 selectedCalculator.addAll(failedKeys)
                 renderCalculatorEntries(refreshed)
-                setReady("$deletedCount DELETED · $failedCount FAILED")
+                setReady("$deletedCount DELETED · $failedCount FAILED · JACKCAT SYNCED")
             }
         }
     }
@@ -805,7 +806,7 @@ class MainActivity : Activity() {
             }
 
             val refreshed = try {
-                sortedEntries(activeClient.listFiles())
+                syncJackViewCatalog(activeClient, sortedEntries(activeClient.listFiles()))
             } catch (t: Throwable) {
                 appendLog("POST-UPLOAD LIST ERROR ${t.message.orEmpty()}")
                 calculatorEntries
@@ -818,7 +819,7 @@ class MainActivity : Activity() {
                 selectedAndroid.addAll(failedKeys)
                 renderCalculatorEntries(refreshed)
                 renderAndroidFiles()
-                setReady(batchSummary(transferredCount, skippedCount, failedCount))
+                setReady("${batchSummary(transferredCount, skippedCount, failedCount)} · JACKCAT SYNCED")
             }
         }
     }
@@ -1062,6 +1063,22 @@ class MainActivity : Activity() {
 
     private fun sortedEntries(entries: List<EvoEntry>): List<EvoEntry> =
         entries.sortedWith(compareBy<EvoEntry> { it.type }.thenBy { it.name.lowercase() })
+
+    private fun syncJackViewCatalog(
+        activeClient: EvoUsbClient,
+        entries: List<EvoEntry>
+    ): List<EvoEntry> {
+        val initial = sortedEntries(entries)
+        return try {
+            val changed = JackViewManager.sync(activeClient, initial, ::appendLog)
+            if (changed) sortedEntries(activeClient.listFiles()) else initial
+        } catch (t: Throwable) {
+            appendLog(
+                "JACKVIEW SYNC ERROR ${t.javaClass.simpleName}: ${t.message.orEmpty()}"
+            )
+            initial
+        }
+    }
 
     private fun isNativeEvoFilename(name: String): Boolean {
         val lower = name.lowercase()
