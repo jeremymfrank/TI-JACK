@@ -8,7 +8,7 @@
 
 TI-JACK is an Android-first project for moving files between a phone and TI calculators, converting compatible legacy files when needed, and verifying what actually reached the calculator. The current transport target is the **TI-84 Evo**.
 
-Current Android version: **v0.20**
+Current Android version: **v0.20.1**
 
 ## What works today
 
@@ -21,6 +21,7 @@ It also includes compatibility work beyond simple file copying:
 - animated GIF preparation for JACKVIEW;
 - automatic JACKVIEW installation/update;
 - automatic JACKCAT generation from viewer-compatible media found on the calculator;
+- automatic viewer sizing/centering metadata in JACKCAT;
 - explicit `Image1`-`Image7` graph-background import for users who want the calculator's numbered image slots.
 
 ## Hardware setup
@@ -75,11 +76,11 @@ For programs that clearly use the classic 265 x 165 color-calculator drawing are
 
 ## JACKVIEW media
 
-**JACKVIEW** is the calculator-side TI Python browser/player bundled with TI-JACK. TI-JACK handles the expensive media preparation on Android, while JACKVIEW uses the Evo's native image-drawing path.
+**JACKVIEW** is the calculator-side TI Python browser/player bundled with TI-JACK. TI-JACK handles media preparation on Android, while JACKVIEW uses the Evo image-drawing path.
 
 **JACKCAT** is the generated TI Python catalog JACKVIEW imports. TI-JACK rebuilds JACKCAT from viewer-compatible media present on the calculator rather than treating the catalog as the source of truth.
 
-The intended flow is:
+The normal flow is:
 
 ```text
 source image/GIF
@@ -89,7 +90,27 @@ source image/GIF
     -> JACKVIEW reads JACKCAT
 ```
 
-Manual hardware testing has confirmed JACKVIEW can display a named still image and play the prepared NYAN CAT animation from a valid JACKCAT. Automatic JACKCAT regeneration remains an active integration area and is being tested against real calculator contents.
+Real-calculator testing has confirmed named still-image display, NYAN CAT animation playback, and the current automatic JACKCAT update path on the tested media set.
+
+### Viewer layout and scaling
+
+JACKVIEW uses a **320 x 210** media viewport beginning below the Python header area.
+
+For new viewer-media imports, TI-JACK now scales images and GIF frames **up or down** to the largest size that fits inside that viewport while preserving the source aspect ratio. It does not stretch the image to a different aspect ratio and does not crop simply to fill both dimensions.
+
+Examples:
+
+```text
+100 x 100   -> 210 x 210, centered horizontally
+1920 x 1080 -> 320 x 180, centered vertically
+800 x 1200  -> 140 x 210, centered horizontally
+```
+
+JACKCAT records the prepared media width and height. JACKVIEW uses those values to center the image or animation in the 320 x 210 viewport. Older four-field JACKCAT entries remain readable; they simply fall back to the original top-left behavior until TI-JACK regenerates the catalog.
+
+When switching from one media item to another, JACKVIEW clears the previous screen before drawing the new item. Animated GIF frames are **not** cleared between every frame, avoiding unnecessary flicker and preserving playback speed.
+
+Existing AppVars are not resampled in place. To get the new full-viewport scaling on an image or GIF that was prepared by an older TI-JACK build, retransmit the original source image/GIF with v0.20.1 or later. Existing smaller media can still be centered after JACKCAT is regenerated because TI-JACK reads the dimensions from the IM8C data.
 
 ### Still images
 
@@ -104,12 +125,12 @@ FMRLOGO.png -> FMRLOGO
 TI-JACK:
 
 - preserves aspect ratio;
-- never intentionally stretches an image;
-- fits viewer media within 320 x 210;
+- scales media toward the largest 320 x 210 fit, including upscaling smaller sources;
+- centers letterboxed media through JACKCAT/JACKVIEW;
 - uses indexed RGB565 color with up to 256 palette entries;
 - preserves one-bit transparency where possible;
 - chooses indexed or RLE IM8C storage based on size;
-- can reduce resolution if necessary to fit Evo media limits.
+- can reduce resolution further if necessary to fit Evo media limits.
 
 ### Animated GIFs
 
@@ -117,7 +138,7 @@ GIFs are decoded and composited on Android. TI-JACK creates one IM8C AppVar per 
 
 Frames are transmitted before the manifest so an interrupted transfer does not leave a valid manifest pointing to frames that never arrived.
 
-**v0.20 GIF policy:**
+Current GIF policy:
 
 - up to **300 frames per GIF**;
 - a source GIF longer than 300 frames is **clipped to its first 300 frames** instead of being rejected for frame count;
@@ -200,9 +221,9 @@ GitHub Actions builds the debug APK from `.github/workflows/build-debug-apk.yml`
 - The Android USB transport currently targets the TI-84 Evo only.
 - Legacy TI-BASIC conversion does not yet cover every token or every CE/Evo behavioral difference.
 - The pixel-exact SNAKE compatibility path fixes the observed green turn artifact but currently makes movement slower than the original conversion.
-- JACKVIEW/JACKCAT automatic synchronization is still being validated on real hardware and mixed calculator file sets.
+- JACKVIEW/JACKCAT synchronization is still being exercised with larger and more varied real-calculator media libraries.
 - A GIF longer than 300 frames is intentionally clipped rather than fully preserved.
-- Very large media may be reduced in resolution to stay within the current generated-media budget.
+- Very large media may be reduced in resolution to stay within current IM8C/generated-media limits.
 - `Image1`-`Image7` graph backgrounds are separate from JACKVIEW's IM8C library.
 
 ## Project direction
@@ -211,8 +232,7 @@ TI-JACK is intended to become one transfer application for multiple TI calculato
 
 Near-term work is focused on:
 
-- reliable dynamic JACKCAT regeneration;
-- JACKVIEW media testing with larger image/GIF libraries;
+- JACKVIEW testing with larger image/GIF libraries;
 - performance improvements for legacy-program compatibility transforms;
 - broader TI-BASIC token coverage;
 - additional TI calculator transports.
