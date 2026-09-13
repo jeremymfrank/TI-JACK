@@ -18,17 +18,19 @@ import kotlin.math.roundToInt
  * a TI-JACK animation manifest plus a set of standard IM8C frame AppVars.
  *
  * Static output can already be displayed by Evo Python's ti_graphics.drawImage.
- * The GIF manifest is intentionally small and documented so a separate viewer
- * can play the generated frame variables later without TI-JACK-specific image
- * decoding code.
+ * The GIF manifest is intentionally small and documented so JACKVIEW can play
+ * generated frame variables without decoding GIF data on the calculator.
  */
 internal object ViewerMediaConverter {
     private const val EVO_APPVAR_TYPE = 8
     private const val MAX_WIDTH = 320
     private const val MAX_HEIGHT = 210
-    private const val MAX_GIF_FRAMES = 120
+    private const val MAX_GIF_FRAMES = 300
     private const val MAX_GIF_OUTPUT_BYTES = 6 * 1024 * 1024
     private const val MAX_IM8C_CORE_BYTES = 0xFFFF
+    private const val LEGACY_HEX_FRAME_LIMIT = 0x100
+    private const val BASE36_FRAME_LIMIT = 36 * 36
+    private const val BASE36_DIGITS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
     private val stillExtensions = setOf("png", "jpg", "jpeg", "webp")
 
@@ -103,14 +105,23 @@ internal object ViewerMediaConverter {
             ?: error("Android could not decode this GIF")
         require(movie.width() > 0 && movie.height() > 0) { "GIF has invalid dimensions" }
 
-        val timeline = parseGifTimeline(source)
-        require(timeline.delaysMs.isNotEmpty()) { "GIF contains no image frames" }
-        require(timeline.delaysMs.size <= MAX_GIF_FRAMES) {
-            "GIF has ${timeline.delaysMs.size} frames; maximum is $MAX_GIF_FRAMES"
+        val parsedTimeline = parseGifTimeline(source)
+        require(parsedTimeline.delaysMs.isNotEmpty()) { "GIF contains no image frames" }
+
+        // Long GIFs are intentionally clipped instead of rejected. The first
+        // MAX_GIF_FRAMES frames keep their original order and delays; frames
+        // after the limit are not transferred to the calculator.
+        val timeline = if (parsedTimeline.delaysMs.size > MAX_GIF_FRAMES) {
+            GifTimeline(
+                delaysMs = parsedTimeline.delaysMs.take(MAX_GIF_FRAMES),
+                loopCount = parsedTimeline.loopCount
+            )
+        } else {
+            parsedTimeline
         }
 
         var scale = fitScale(movie.width(), movie.height())
-        repeat(12) {
+        repeat(18) {
             val width = max(1, (movie.width() * scale).roundToInt())
             val height = max(1, (movie.height() * scale).roundToInt())
             val converted = renderGifVariables(
@@ -121,14 +132,15 @@ internal object ViewerMediaConverter {
                 height = height
             )
             if (converted != null) return converted
-            scale *= 0.95f
+            scale *= 0.85f
         }
         error("GIF could not be reduced below the Evo media size limits")
     }
 
     /**
-     * Returns null when a frame exceeds the 16-bit IM8C payload length so the
-     * caller can retry the whole animation at a slightly smaller size.
+     * Returns null when a frame exceeds the 16-bit IM8C payload length or the
+     * generated animation exceeds the current media budget, allowing the caller
+     * to retry the whole animation at a smaller resolution.
      */
     private fun renderGifVariables(
         movie: Movie,
@@ -425,15 +437,28 @@ internal object ViewerMediaConverter {
     }
 
     private fun gifFrameNames(sourceName: String, count: Int): List<String> {
-        require(count in 1..0x100)
+        require(count in 1..MAX_GIF_FRAMES)
+        require(count <= BASE36_FRAME_LIMIT) { "GIF frame naming limit exceeded" }
         val base = sanitizeName(sourceName.substringBeforeLast('.', sourceName)).padEnd(2, 'X')
         val crc = CRC32().apply { update(sourceName.toByteArray(Charsets.UTF_8)) }.value.toInt()
         var prefix = "J" + base.take(2) + "%03X".format(crc and 0xFFF)
         val manifest = viewerNameFromFilename(sourceName)
-        if ((0 until count).any { manifest == prefix + "%02X".format(it) }) {
+        val useBase36 = count > LEGACY_HEX_FRAME_LIMIT
+
+        fun suffix(index: Int): String =
+            if (useBase36) base36Suffix(index) else "%02X".format(index)
+
+        if ((0 until count).any { manifest == prefix + suffix(it) }) {
             prefix = "K" + base.take(2) + "%03X".format(crc and 0xFFF)
         }
-        return (0 until count).map { prefix + "%02X".format(it) }
+        return (0 until count).map { prefix + suffix(it) }
+    }
+
+    private fun base36Suffix(index: Int): String {
+        require(index in 0 until BASE36_FRAME_LIMIT)
+        return "" +
+            BASE36_DIGITS[index / 36] +
+            BASE36_DIGITS[index % 36]
     }
 
     private fun packageAppVar(name: String, appVarData: ByteArray): ByteArray {
