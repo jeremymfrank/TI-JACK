@@ -57,10 +57,17 @@ class HelpButton @JvmOverloads constructor(
         • Legacy .8xp conversion is available as a pure-Kotlin preview; no native converter is included.
         • Programs using the classic 265 × 165 CE graph canvas are centered on the Evo when TI-JACK can identify that layout safely.
         • A token or layout TI-JACK cannot convert safely is refused instead of guessed.
-        • PNG, JPG, JPEG, and WebP files with ordinary names become named IM8C .8xv2 AppVars for custom viewing. Example: FMRLOGO.png becomes FMRLOGO.
-        • Animated GIFs become IM8C frame AppVars plus a TIJGIF01 timing/loop manifest for the separate viewer project. Frames are sent before the manifest.
-        • Name a still source Image1 through Image7 (or Img1 through Img7) to use the older graph-background .8ca2 slot instead.
+        • PNG, JPG, JPEG, and WebP files with ordinary names become named IM8C .8xv2 AppVars for JACKVIEW.
+        • Animated GIFs become IM8C frame AppVars plus a TIJGIF01 manifest. Frames are sent before the manifest.
+        • JACKVIEW is bundled with TI-JACK. On a normal calculator directory refresh, TI-JACK installs or updates JACKVIEW as needed and regenerates JACKCAT from IM8C images actually present on the calculator.
+        • JACKCAT is generated automatically. Static images may keep their full AppVar name; GIF frame sets use a six-character prefix plus hexadecimal frame suffixes.
+        • Name a still source Image1 through Image7 (or Img1 through Img7) to use the graph-background .8ca2 slot instead of JACKVIEW media.
         • Viewer-media conversion preserves aspect ratio; GIF preparation currently supports up to 120 frames and 6 MB of generated variables.
+
+        JACKVIEW CONTROLS
+        • Browser: UP/DOWN select, ENTER open, CLEAR exit.
+        • Image: LEFT/RIGHT previous/next, CLEAR return.
+        • GIF: UP faster, DOWN slower, ENTER pause/resume, LEFT/RIGHT previous/next, CLEAR return.
 
         CONNECTION TIPS
         • Plug the USB-C adapter into the phone, then connect the calculator with a USB data cable.
