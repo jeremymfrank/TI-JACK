@@ -40,7 +40,8 @@ class MainActivity : Activity() {
         val file: DocumentFile,
         val data: ByteArray,
         val info: EvoFileInfo,
-        val conflict: Boolean
+        val conflict: Boolean,
+        val archiveTarget: Boolean?
     )
 
     private lateinit var usbManager: UsbManager
@@ -50,6 +51,7 @@ class MainActivity : Activity() {
     private lateinit var computerFolder: TextView
     private lateinit var computerList: LinearLayout
     private lateinit var calculatorList: LinearLayout
+    private lateinit var calculatorMemoryStatus: TextView
     private lateinit var chooseFolder: Button
     private lateinit var androidSelectAll: Button
     private lateinit var androidClearSelection: Button
@@ -58,6 +60,9 @@ class MainActivity : Activity() {
     private lateinit var calculatorSelectAll: Button
     private lateinit var calculatorClearSelection: Button
     private lateinit var deleteCalculatorSelected: Button
+    private lateinit var archiveCalculatorSelected: Button
+    private lateinit var unarchiveCalculatorSelected: Button
+    private lateinit var cleanupGifMedia: Button
     private lateinit var saveSelected: Button
 
     private val executor = Executors.newSingleThreadExecutor()
@@ -127,6 +132,7 @@ class MainActivity : Activity() {
         computerFolder = findViewById(R.id.computerFolder)
         computerList = findViewById(R.id.computerList)
         calculatorList = findViewById(R.id.calculatorList)
+        calculatorMemoryStatus = findViewById(R.id.calculatorMemoryStatus)
         chooseFolder = findViewById(R.id.chooseFolder)
         androidSelectAll = findViewById(R.id.androidSelectAll)
         androidClearSelection = findViewById(R.id.androidClearSelection)
@@ -135,6 +141,9 @@ class MainActivity : Activity() {
         calculatorSelectAll = findViewById(R.id.calculatorSelectAll)
         calculatorClearSelection = findViewById(R.id.calculatorClearSelection)
         deleteCalculatorSelected = findViewById(R.id.deleteCalculatorSelected)
+        archiveCalculatorSelected = findViewById(R.id.archiveCalculatorSelected)
+        unarchiveCalculatorSelected = findViewById(R.id.unarchiveCalculatorSelected)
+        cleanupGifMedia = findViewById(R.id.cleanupGifMedia)
         saveSelected = findViewById(R.id.saveSelected)
 
         chooseFolder.setOnClickListener { chooseAndroidFolder() }
@@ -145,6 +154,9 @@ class MainActivity : Activity() {
         calculatorSelectAll.setOnClickListener { selectAllCalculatorEntries() }
         calculatorClearSelection.setOnClickListener { clearCalculatorSelection() }
         deleteCalculatorSelected.setOnClickListener { confirmDeleteCalculatorSelection() }
+        archiveCalculatorSelected.setOnClickListener { confirmMoveCalculatorSelection(true) }
+        unarchiveCalculatorSelected.setOnClickListener { confirmMoveCalculatorSelection(false) }
+        cleanupGifMedia.setOnClickListener { scanForOrphanGifFrames() }
         saveSelected.setOnClickListener {
             prepareDownloadBatch(selectedCalculatorEntries())
         }
@@ -438,6 +450,7 @@ class MainActivity : Activity() {
 
     private fun renderCalculatorEntries(entries: List<EvoEntry>) {
         calculatorList.removeAllViews()
+        renderCalculatorMemory(entries)
         val validKeys = entries.mapTo(HashSet()) { calculatorKey(it) }
         selectedCalculator.retainAll(validKeys)
 
@@ -501,6 +514,18 @@ class MainActivity : Activity() {
         updateActionButtons()
     }
 
+    private fun renderCalculatorMemory(entries: List<EvoEntry>) {
+        if (!::calculatorMemoryStatus.isInitialized) return
+        if (client == null && entries.isEmpty()) {
+            calculatorMemoryStatus.text = "EST FREE · RAM -- · ARC --"
+            return
+        }
+        val memory = EvoMemoryManager.snapshot(entries)
+        calculatorMemoryStatus.text =
+            "EST FREE · RAM ${formatBytes(memory.ramFreeEstimate)} · " +
+                "ARC ${formatBytes(memory.archiveFreeEstimate)}"
+    }
+
     private fun selectAllAndroidFiles() {
         if (connecting || transferring) return
         val currentFolder = folder ?: return
@@ -534,6 +559,131 @@ class MainActivity : Activity() {
         if (transferring) return
         selectedCalculator.clear()
         renderCalculatorEntries(calculatorEntries)
+    }
+
+    private fun confirmMoveCalculatorSelection(toArchive: Boolean) {
+        if (connecting || transferring || selectedCalculator.isEmpty()) return
+        val entries = selectedCalculatorEntries().filter { it.archived != toArchive }
+        if (entries.isEmpty()) {
+            return setReady(
+                if (toArchive) "SELECTED VARIABLES ARE ALREADY ARCHIVED"
+                else "SELECTED VARIABLES ARE ALREADY IN RAM"
+            )
+        }
+
+        val destination = if (toArchive) "Archive" else "RAM"
+        val bytes = entries.sumOf { EvoMemoryManager.footprint(it.size) }
+        AlertDialog.Builder(this)
+            .setTitle("Move selected variables to $destination?")
+            .setMessage(
+                "Move ${entries.size} variable${if (entries.size == 1) "" else "s"} " +
+                    "(${formatBytes(bytes)}) to $destination?\n\n" +
+                    "TI-JACK will read each variable back, rewrite it to the requested memory, " +
+                    "then verify its bytes and memory location."
+            )
+            .setPositiveButton(if (toArchive) "ARCHIVE" else "MOVE TO RAM") { _, _ ->
+                startMoveCalculatorBatch(entries, toArchive)
+            }
+            .setNegativeButton("CANCEL", null)
+            .show()
+    }
+
+    private fun startMoveCalculatorBatch(entries: List<EvoEntry>, toArchive: Boolean) {
+        if (connecting || transferring || entries.isEmpty()) return
+        val activeClient = client ?: return setTransferError("NO CALCULATOR CONNECTED")
+
+        transferring = true
+        updateActionButtons()
+        val destination = if (toArchive) "ARCHIVE" else "RAM"
+        setTransferStatus("MOVING ${entries.size} VARIABLE${if (entries.size == 1) "" else "S"} TO $destination")
+
+        executor.execute {
+            var movedCount = 0
+            var failedCount = 0
+            val failedKeys = LinkedHashSet<String>()
+
+            for ((index, entry) in entries.withIndex()) {
+                runOnUiThread {
+                    diagnostic.text =
+                        "MOVING ${index + 1}/${entries.size} · ${entry.name} → $destination"
+                }
+                try {
+                    activeClient.setVariableArchived(entry, toArchive)
+                    movedCount++
+                } catch (t: Throwable) {
+                    failedCount++
+                    failedKeys += calculatorKey(entry)
+                    appendLog("MEMORY MOVE ERROR ${entry.name}: ${t.message.orEmpty()}")
+                }
+            }
+
+            val refreshed = try {
+                sortedEntries(activeClient.listFiles())
+            } catch (t: Throwable) {
+                appendLog("POST-MOVE LIST ERROR ${t.message.orEmpty()}")
+                calculatorEntries
+            }
+            calculatorEntries = refreshed
+
+            runOnUiThread {
+                transferring = false
+                selectedCalculator.clear()
+                selectedCalculator.addAll(failedKeys)
+                renderCalculatorEntries(refreshed)
+                setReady("$movedCount MOVED TO $destination · $failedCount FAILED")
+            }
+        }
+    }
+
+    private fun scanForOrphanGifFrames() {
+        if (connecting || transferring) return
+        val activeClient = client ?: return setTransferError("NO CALCULATOR CONNECTED")
+        val snapshot = calculatorEntries
+        if (snapshot.none { it.type == 8 }) {
+            return setReady("NO APPVARS TO SCAN FOR JACKVIEW GIF FRAMES")
+        }
+
+        transferring = true
+        updateActionButtons()
+        setTransferStatus("SCANNING JACKVIEW GIF MANIFESTS AND FRAME VARIABLES")
+
+        executor.execute {
+            val orphans = try {
+                EvoMemoryManager.findOrphanGifFrames(activeClient, snapshot, ::appendLog)
+            } catch (t: Throwable) {
+                appendLog("GIF CLEANUP SCAN ERROR ${t.message.orEmpty()}")
+                emptyList()
+            }
+
+            runOnUiThread {
+                transferring = false
+                updateActionButtons()
+                if (orphans.isEmpty()) {
+                    setReady("NO ORPHANED JACKVIEW GIF FRAMES FOUND")
+                    return@runOnUiThread
+                }
+
+                val bytes = orphans.sumOf { EvoMemoryManager.footprint(it.size) }
+                val groups = orphans.groupBy { it.name.uppercase().take(6) }
+                val groupText = groups.entries.joinToString("\n") { (prefix, frames) ->
+                    "• ${prefix}xx · ${frames.size} frame${if (frames.size == 1) "" else "s"}"
+                }
+                setReady("FOUND ${orphans.size} ORPHANED GIF FRAME CANDIDATES")
+                AlertDialog.Builder(this)
+                    .setTitle("Delete orphaned JACKVIEW GIF frames?")
+                    .setMessage(
+                        "TI-JACK found ${orphans.size} generated frame candidate" +
+                            "${if (orphans.size == 1) "" else "s"} (${formatBytes(bytes)}) not referenced " +
+                            "by any readable TIJGIF01 manifest.\n\n$groupText\n\n" +
+                            "This is intended to clean up interrupted GIF transfers."
+                    )
+                    .setPositiveButton("DELETE ORPHANS") { _, _ ->
+                        startDeleteCalculatorBatch(orphans)
+                    }
+                    .setNegativeButton("CANCEL", null)
+                    .show()
+            }
+        }
     }
 
     private fun confirmDeleteCalculatorSelection() {
@@ -710,10 +860,11 @@ class MainActivity : Activity() {
             var skipped = 0
             for ((index, file) in files.withIndex()) {
                 try {
+                    val fileName = file.name ?: "ANDROID FILE"
+                    val viewerMedia = ViewerMediaConverter.canConvertFilename(fileName)
                     runOnUiThread {
-                        val fileName = file.name ?: "ANDROID FILE"
                         val action = when {
-                            ViewerMediaConverter.canConvertFilename(fileName) -> "PREPARING MEDIA"
+                            viewerMedia -> "PREPARING MEDIA"
                             EvoImageConverter.canConvertFilename(fileName) -> "CONVERTING IMAGE"
                             LegacyTiConverter.canConvertFilename(fileName) -> "CONVERTING"
                             else -> "READING"
@@ -734,7 +885,12 @@ class MainActivity : Activity() {
                             "multiple selected sources produce the same calculator variable; rename one source and retry"
                         }
                         val conflict = existingSnapshot.any { EvoFileCodec.sameIdentity(info, it) }
-                        prepared += PreparedUpload(file, data, info, conflict)
+                        val archiveTarget = when {
+                            viewerMedia -> true
+                            info.type in setOf(4, 5, 18) -> true
+                            else -> null
+                        }
+                        prepared += PreparedUpload(file, data, info, conflict, archiveTarget)
                     }
                 } catch (t: Throwable) {
                     skipped++
@@ -772,6 +928,9 @@ class MainActivity : Activity() {
     ) {
         if (transferring || connecting) return
         val activeClient = client ?: return setTransferError("NO CALCULATOR CONNECTED")
+        val preflightError = archivePreflightError(prepared, policy)
+        if (preflightError != null) return setTransferError(preflightError)
+
         transferring = true
         updateActionButtons()
         setTransferStatus("SENDING ${prepared.size} VARIABLE${if (prepared.size == 1) "" else "S"} → EVO")
@@ -795,7 +954,8 @@ class MainActivity : Activity() {
                 try {
                     activeClient.uploadVariable(
                         item.data,
-                        overwrite = item.conflict && policy == ConflictPolicy.REPLACE
+                        overwrite = item.conflict && policy == ConflictPolicy.REPLACE,
+                        archiveTarget = item.archiveTarget
                     )
                     transferredCount++
                 } catch (t: Throwable) {
@@ -822,6 +982,48 @@ class MainActivity : Activity() {
                 setReady("${batchSummary(transferredCount, skippedCount, failedCount)} · JACKCAT SYNCED")
             }
         }
+    }
+
+    private fun archivePreflightError(
+        prepared: List<PreparedUpload>,
+        policy: ConflictPolicy
+    ): String? {
+        val sending = prepared.filterNot { it.conflict && policy == ConflictPolicy.SKIP }
+        val archiveItems = sending.filter { it.archiveTarget == true }
+        if (archiveItems.isEmpty()) return null
+
+        val mediaGroups = archiveItems
+            .filter { ViewerMediaConverter.canConvertFilename(it.file.name.orEmpty()) }
+            .groupBy { androidKey(it.file) }
+        for ((_, items) in mediaGroups) {
+            val bytes = items.sumOf { EvoMemoryManager.footprint(it.data.size.toLong()) }
+            if (bytes > EvoMemoryManager.MAX_SINGLE_MEDIA_BYTES) {
+                val name = items.firstOrNull()?.file?.name ?: "media"
+                return "$name NEEDS ${formatBytes(bytes)} · JACKVIEW MEDIA LIMIT IS " +
+                    formatBytes(EvoMemoryManager.MAX_SINGLE_MEDIA_BYTES.toLong())
+            }
+        }
+
+        val memory = EvoMemoryManager.snapshot(calculatorEntries)
+        var reclaimable = 0L
+        if (policy == ConflictPolicy.REPLACE) {
+            for (item in archiveItems) {
+                val existing = calculatorEntries.firstOrNull {
+                    it.archived && EvoFileCodec.sameIdentity(item.info, it)
+                }
+                if (existing != null) reclaimable += EvoMemoryManager.footprint(existing.size)
+            }
+        }
+
+        val incoming = archiveItems.sumOf {
+            EvoMemoryManager.footprint(it.data.size.toLong())
+        }
+        val available = memory.archiveFreeEstimate + reclaimable
+        if (incoming > available) {
+            return "ARCHIVE PRECHECK · NEED ${formatBytes(incoming)} · " +
+                "EST FREE ${formatBytes(available)} · DELETE FILES OR CLEAN GIF ORPHANS FIRST"
+        }
+        return null
     }
 
     private fun prepareDownloadBatch(entries: List<EvoEntry>) {
@@ -1056,6 +1258,16 @@ class MainActivity : Activity() {
             enabled && selectedCalculator.isNotEmpty() && client != null
         saveSelected.isEnabled =
             enabled && selectedCalculator.isNotEmpty() && client != null
+
+        if (::archiveCalculatorSelected.isInitialized) {
+            val selectedEntries = selectedCalculatorEntries()
+            archiveCalculatorSelected.isEnabled =
+                enabled && client != null && selectedEntries.any { !it.archived }
+            unarchiveCalculatorSelected.isEnabled =
+                enabled && client != null && selectedEntries.any { it.archived }
+            cleanupGifMedia.isEnabled =
+                enabled && client != null && calculatorEntries.any { it.type == 8 }
+        }
     }
 
     private fun batchSummary(done: Int, skipped: Int, failed: Int): String =
@@ -1146,6 +1358,9 @@ class MainActivity : Activity() {
         operationStatus.setTextColor(getColor(R.color.amber))
         diagnostic.text = "Connect with the OTG/host adapter if Android does not enumerate the Evo."
         calculatorList.removeAllViews()
+        if (::calculatorMemoryStatus.isInitialized) {
+            calculatorMemoryStatus.text = "EST FREE · RAM -- · ARC --"
+        }
         updateActionButtons()
     }
 
