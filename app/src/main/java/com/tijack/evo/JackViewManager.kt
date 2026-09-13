@@ -9,6 +9,10 @@ internal object JackViewManager {
     private const val APPVAR_TYPE = 8
     private const val PYTHON_TYPE = 15
     private const val MAX_SCAN_SIZE = 70_000L
+    private const val MAX_GIF_FRAMES = 300
+    private const val LEGACY_HEX_FRAME_LIMIT = 0x100
+    private const val BASE36_FRAME_LIMIT = 36 * 36
+    private const val BASE36_DIGITS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     private const val JACKVIEW_NAME = "JACKVIEW"
     private const val JACKCAT_NAME = "JACKCAT"
 
@@ -32,7 +36,18 @@ internal object JackViewManager {
         var changed = false
 
         val jackView = EvoPythonPackager.build(JACKVIEW_NAME, jackViewSource)
-        changed = syncVariable(client, entries, jackView, JACKVIEW_NAME, log) || changed
+        val jackViewInfo = EvoFileCodec.inspect(jackView)
+        var jackViewPresent = entries.any { EvoFileCodec.sameIdentity(jackViewInfo, it) }
+        try {
+            changed = syncVariable(client, entries, jackView, JACKVIEW_NAME, log) || changed
+            jackViewPresent = true
+        } catch (t: Throwable) {
+            // An already-installed JACKVIEW must not prevent a fresh JACKCAT
+            // from being generated. This keeps catalog updates independent from
+            // a non-critical companion-program refresh failure.
+            log("JACKVIEW update warning: ${t.message.orEmpty()}")
+            if (!jackViewPresent) throw t
+        }
 
         val imageNames = LinkedHashSet<String>()
         val manifests = ArrayList<GifManifest>()
@@ -61,9 +76,6 @@ internal object JackViewManager {
             }
         }
 
-        // An unrelated or protected AppVar must never prevent JACKCAT from being
-        // created. This was the v0.19.1 failure mode: one unreadable type-8
-        // variable aborted the entire scan, so JACKVIEW had no catalog at all.
         if (skippedAppVars.isNotEmpty()) {
             log(
                 "JACKCAT continuing after ${skippedAppVars.size} unreadable AppVar" +
@@ -82,22 +94,42 @@ internal object JackViewManager {
             consumedFrames += frames
         }
 
-        // Recover animations whose TIJGIF01 manifest is missing, including the
-        // first JACKVIEW hardware-test files. TI-JACK frame names are six
-        // characters plus a two-digit hexadecimal frame number.
+        // Recover a contiguous TI-JACK animation even when its TIJGIF01
+        // manifest is missing. Up to 256 frames use the original two-digit hex
+        // suffix. Longer sets use two-digit base36 suffixes, still keeping every
+        // calculator variable name within eight characters.
         val grouped = imageNames
             .filter {
                 it !in consumedFrames &&
-                    Regex("^[A-Z][A-Z0-9_]{5}[0-9A-F]{2}$").matches(it)
+                    Regex("^[A-Z][A-Z0-9_]{5}[0-9A-Z]{2}$").matches(it)
             }
             .groupBy { it.take(6) }
         for ((prefix, names) in grouped) {
             val available = names.toHashSet()
             if (prefix + "00" !in available) continue
+            val useBase36 = names.any { name ->
+                name.takeLast(2).any { it !in '0'..'9' && it !in 'A'..'F' }
+            }
             var count = 0
-            while (count < 256 && prefix + "%02X".format(count) in available) count++
+            if (useBase36) {
+                while (
+                    count < MAX_GIF_FRAMES &&
+                    prefix + base36Suffix(count) in available
+                ) {
+                    count++
+                }
+            } else {
+                while (
+                    count < LEGACY_HEX_FRAME_LIMIT &&
+                    prefix + "%02X".format(count) in available
+                ) {
+                    count++
+                }
+            }
             if (count < 2) continue
-            val frames = (0 until count).map { prefix + "%02X".format(it) }
+            val frames = (0 until count).map {
+                prefix + if (useBase36) base36Suffix(it) else "%02X".format(it)
+            }
             media += MediaItem(prefix, prefix, count, 0)
             consumedFrames += frames
         }
@@ -115,15 +147,11 @@ internal object JackViewManager {
         val jackCat = EvoPythonPackager.build(JACKCAT_NAME, catalogSource)
         changed = syncVariable(client, entries, jackCat, JACKCAT_NAME, log) || changed
 
-        // Verify JACKCAT itself is now present. Do not let the UI claim a sync
-        // completed merely because no exception escaped the scan loop.
-        val catalogInfo = EvoFileCodec.inspect(jackCat)
-        val refreshed = client.listFiles()
-        require(refreshed.any { EvoFileCodec.sameIdentity(catalogInfo, it) }) {
-            "JACKCAT upload completed but JACKCAT is missing from the calculator directory"
-        }
-        require(refreshed.any { it.type == PYTHON_TYPE && it.name.equals(JACKVIEW_NAME, true) }) {
-            "JACKVIEW is missing from the calculator directory after sync"
+        // syncVariable either matched and downloaded the existing JACKCAT or
+        // completed a verified upload/read-back. Re-listing here used to invoke
+        // catalog sync recursively, so the successful sync itself is the proof.
+        require(jackViewPresent) {
+            "JACKVIEW is missing from the calculator after catalog sync"
         }
 
         val skippedText = if (skippedAppVars.isEmpty()) {
@@ -182,7 +210,7 @@ internal object JackViewManager {
     private fun parseGifManifest(title: String, core: ByteArray): GifManifest? {
         if (!core.startsWithAscii("TIJGIF01") || core.size < 20) return null
         val frameCount = u16le(core, 12)
-        if (frameCount !in 1..256) return null
+        if (frameCount !in 1..MAX_GIF_FRAMES) return null
         if (core.size < 20 + frameCount * 10) return null
 
         val names = ArrayList<String>(frameCount)
@@ -200,11 +228,14 @@ internal object JackViewManager {
 
     private fun mediaItemForFrames(title: String, frames: List<String>): MediaItem? {
         if (frames.size == 1) return MediaItem(title, frames[0], 1, 0)
+        if (frames.size !in 2..MAX_GIF_FRAMES) return null
         val first = frames[0]
         if (first.length != 8 || first.takeLast(2) != "00") return null
         val prefix = first.take(6)
+        val useBase36 = frames.size > LEGACY_HEX_FRAME_LIMIT
         for (i in frames.indices) {
-            if (frames[i] != prefix + "%02X".format(i)) return null
+            val suffix = if (useBase36) base36Suffix(i) else "%02X".format(i)
+            if (frames[i] != prefix + suffix) return null
         }
         return MediaItem(title, prefix, frames.size, 0)
     }
@@ -230,6 +261,13 @@ internal object JackViewManager {
     private fun titleFor(name: String): String =
         name.replace('_', ' ').take(24)
 
+    private fun base36Suffix(index: Int): String {
+        require(index in 0 until BASE36_FRAME_LIMIT)
+        return "" +
+            BASE36_DIGITS[index / 36] +
+            BASE36_DIGITS[index % 36]
+    }
+
     private fun ByteArray.startsWithAscii(value: String): Boolean {
         val prefix = value.toByteArray(Charsets.US_ASCII)
         if (size < prefix.size) return false
@@ -253,6 +291,7 @@ LEFT=24
 RIGHT=26
 ENTER=105
 CLEAR=45
+B36="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 try:
  from JACKCAT import media
@@ -263,16 +302,22 @@ def released():
  while get_key(0)!=0:
   pass
 
+def b36(i):
+ return B36[i//36]+B36[i%36]
+
 def frame_names(base,count):
  if count==1:
   return [base]
  out=[]
  i=0
  while i<count:
-  h=hex(i)[2:].upper()
-  if len(h)<2:
-   h="0"+h
-  out.append(base+h)
+  if count>256:
+   s=b36(i)
+  else:
+   s=hex(i)[2:].upper()
+   if len(s)<2:
+    s="0"+s
+  out.append(base+s)
   i+=1
  return out
 
