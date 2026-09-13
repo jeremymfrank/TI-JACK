@@ -42,7 +42,7 @@ For RLE mode:
 
 TI-JACK chooses indexed or RLE storage per image based on which is smaller. Images with at most 256 colors keep their RGB565 palette directly. Richer images use a deterministic reduced palette. Transparency is reduced to one transparent palette index.
 
-The converter preserves aspect ratio, never upscales, and fits media within 320 x 210.
+The converter preserves aspect ratio and scales media up or down toward the largest fit inside the 320 x 210 JACKVIEW viewport. It does not intentionally stretch an image to a different aspect ratio or crop it merely to fill both dimensions. If the resulting IM8C payload is too large, TI-JACK retries at smaller dimensions until the file fits the current format limits.
 
 ## Animated GIFs
 
@@ -102,7 +102,17 @@ Frames are transmitted before the manifest so an interrupted transfer does not l
 
 `JACKCAT.8xpy2` is generated from viewer-compatible media found on the calculator. Static images are cataloged by exact AppVar name. GIF manifests are cataloged as one animation entry instead of exposing every frame individually.
 
-When a manifest is missing, TI-JACK can recover contiguous TI-JACK frame sets using the legacy hexadecimal naming scheme or the extended base36 naming scheme.
+Current JACKCAT entries use six values:
+
+```text
+(title, base_name_or_frame_prefix, frame_count, added_delay_ms, width, height)
+```
+
+The width and height come from the verified IM8C image or GIF manifest. JACKVIEW uses those dimensions to center the prepared media in its 320 x 210 viewport. JACKVIEW remains backward-compatible with older four-value catalog entries and uses the old top-left placement when dimensions are unavailable.
+
+When a manifest is missing, TI-JACK can recover contiguous TI-JACK frame sets using the legacy hexadecimal naming scheme or the extended base36 naming scheme. The dimensions of the first verified frame are used for centering the recovered animation.
+
+JACKVIEW clears the previous media item before opening the next still image or animation. It does not clear between every GIF frame, avoiding unnecessary flicker and preserving playback speed.
 
 ## Graph-background compatibility
 
