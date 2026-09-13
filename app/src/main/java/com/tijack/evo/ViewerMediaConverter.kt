@@ -197,8 +197,14 @@ internal object ViewerMediaConverter {
         }
     }
 
+    /**
+     * Scale both down and up so one side reaches the JACKVIEW viewport while
+     * preserving aspect ratio. The remaining letterbox area is centered by
+     * JACKVIEW. If the resulting IM8C is too large, the retry loops above reduce
+     * the scale until the payload fits.
+     */
     private fun fitScale(width: Int, height: Int): Float =
-        min(1f, min(MAX_WIDTH.toFloat() / width, MAX_HEIGHT.toFloat() / height))
+        min(MAX_WIDTH.toFloat() / width, MAX_HEIGHT.toFloat() / height)
 
     private fun renderBitmap(source: Bitmap, width: Int, height: Int): Bitmap {
         val target = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
