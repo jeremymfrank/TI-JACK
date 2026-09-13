@@ -66,7 +66,15 @@ class HelpButton @JvmOverloads constructor(
         • JACKCAT is a normal Python program and should appear beside JACKVIEW. Unrelated or unreadable AppVars are skipped; they do not block the catalog.
         • Up to 256 GIF frames use two-digit hexadecimal suffixes. Longer GIFs use two-digit base36 suffixes so all frame names still fit the Evo's eight-character variable limit.
         • Name a still source Image1 through Image7 (or Img1 through Img7) to use the graph-background .8ca2 slot instead of JACKVIEW media.
-        • Viewer-media conversion preserves aspect ratio and may reduce resolution to fit the current 6 MB generated-media budget.
+        • Viewer-media conversion preserves aspect ratio and may reduce resolution to fit Evo media limits.
+        • JACKVIEW media is sent directly to Archive and checked against a conservative archive-space estimate before transfer. A single prepared media source is capped at about 2.4 MB.
+
+        MEMORY MANAGEMENT
+        • Each calculator row shows RAM or ARC. The calculator header shows conservative EST FREE values for RAM and Archive.
+        • EST FREE is calculated from the directory's variable sizes with space reserved for the OS and preloaded content; it is not the calculator's exact hidden Memory-screen counter.
+        • Select variables and tap ARCHIVE or RAM to move them. TI-JACK reads the original bytes, rewrites them to the requested memory, then verifies both the bytes and memory location.
+        • CLEAN GIF scans TIJGIF01 manifests and offers to delete groups of generated GIF frame variables that are no longer referenced by a readable manifest. Deletion is still verified afterward.
+        • If a prepared media transfer is larger than the safe per-media guard or the estimated remaining Archive, TI-JACK stops before sending it.
 
         JACKVIEW CONTROLS
         • Browser: UP/DOWN select, ENTER open, CLEAR exit.
