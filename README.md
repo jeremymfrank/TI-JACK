@@ -8,13 +8,13 @@
 
 TI-JACK is an Android-first project for moving files between a phone and TI calculators, converting compatible legacy files when needed, and verifying what actually reached the calculator. The current transport target is the **TI-84 Evo**.
 
-Current Android version: **v0.20.1**
+Current Android version: **v0.21.0**
 
 ## What works today
 
-TI-JACK can connect to a TI-84 Evo over USB host/OTG, browse calculator variables, transfer files in either direction, select multiple files, replace or skip duplicates, delete files, and verify uploads by reading them back byte-for-byte.
+TI-JACK can connect to a TI-84 Evo over USB host/OTG, browse calculator variables, transfer files in either direction, select multiple files, replace or skip duplicates, delete files, move variables between RAM and Archive, and verify writes by reading them back byte-for-byte.
 
-It also includes compatibility work beyond simple file copying:
+It also includes compatibility and maintenance work beyond simple file copying:
 
 - pure-Kotlin legacy `.8xp` to Evo `.8xp2` conversion for supported TI-BASIC programs;
 - named image conversion for JACKVIEW;
@@ -22,7 +22,11 @@ It also includes compatibility work beyond simple file copying:
 - automatic JACKVIEW installation/update;
 - automatic JACKCAT generation from viewer-compatible media found on the calculator;
 - automatic viewer sizing/centering metadata in JACKCAT;
-- explicit `Image1`-`Image7` graph-background import for users who want the calculator's numbered image slots.
+- explicit `Image1`-`Image7` graph-background import for users who want the calculator's numbered image slots;
+- conservative RAM/Archive free-space estimates from the calculator directory;
+- verified **ARCHIVE** / **RAM** moves for selected variables;
+- **CLEAN GIF** recovery for generated GIF frames left behind by interrupted transfers;
+- archive-space preflight before large JACKVIEW media transfers.
 
 ## Hardware setup
 
@@ -52,8 +56,51 @@ Requirements:
 5. Tap **TRANSMIT** in the direction you want.
 6. Choose **REPLACE** or **SKIP EXISTING** when a destination conflict exists.
 7. Use **DELETE**, **SELECT ALL**, and **CLEAR** as needed.
+8. On the calculator side, use **ARCHIVE** or **RAM** to move selected variables, and **CLEAN GIF** to look for orphaned JACKVIEW animation frames.
 
 TI-JACK rereads the calculator directory after write operations and verifies uploaded variables by downloading them back.
+
+## Calculator memory management
+
+Each calculator row identifies the variable as `RAM` or `ARC`. The calculator header also shows:
+
+```text
+EST FREE · RAM ... · ARC ...
+```
+
+The Evo directory protocol currently exposes each variable's size and memory location, but TI-JACK has not found an exact protocol field for the calculator's own Memory-screen `RAM FREE` / `ARC FREE` counters. v0.21.0 therefore calculates a **conservative estimate**, using safe working capacities of 560 KiB RAM and 2700 KiB Archive and reserving a small amount per variable for overhead. This is intentionally labeled `EST FREE`; it should not be treated as an exact OS counter.
+
+### Moving variables between RAM and Archive
+
+Select one or more calculator variables and tap **ARCHIVE** or **RAM**.
+
+TI-JACK does not delete the original first. For each variable it:
+
+```text
+download exact bytes
+    -> verify identity
+    -> rewrite same variable with requested memtarget
+    -> reread directory
+    -> verify RAM/Archive location
+    -> download again
+    -> compare bytes
+```
+
+That makes the memory move use the same write-integrity standard as ordinary transfers.
+
+### GIF cleanup
+
+A JACKVIEW GIF consists of generated frame AppVars plus a `TIJGIF01` manifest. Frames are deliberately transmitted first, so an interrupted or out-of-space transfer can leave generated frames behind without a valid manifest.
+
+**CLEAN GIF** scans the small AppVars that could contain manifests, collects the frame names referenced by readable `TIJGIF01` manifests, and then looks for unreferenced variables matching TI-JACK's generated frame naming pattern. To reduce false positives, cleanup only offers groups containing at least two unreferenced generated-frame candidates with the same six-character prefix. Nothing is deleted until the user confirms, and each deletion is verified afterward.
+
+### Media preflight
+
+New JACKVIEW still images and GIF frame variables are sent directly to **Archive**. Before transmission, TI-JACK calculates the prepared output size and compares it with the conservative Archive estimate.
+
+v0.21.0 also applies a **2.4 MiB prepared-media guard per source image/GIF**. If the media exceeds that guard, or the prepared Archive payload exceeds the estimated remaining Archive space, the transfer is stopped before the first generated variable is sent. Replacing existing archived variables credits their estimated reclaimed space during the preflight calculation.
+
+These checks are intentionally conservative. They are meant to prevent the failure mode where a large GIF consumes most of the calculator before the final manifest is reached.
 
 ## Native Evo files
 
@@ -84,7 +131,8 @@ The normal flow is:
 
 ```text
 source image/GIF
-    -> TI-JACK converts and transmits media AppVars
+    -> TI-JACK converts and preflights media
+    -> TI-JACK transmits media AppVars to Archive
     -> TI-JACK scans calculator media
     -> TI-JACK regenerates JACKCAT when needed
     -> JACKVIEW reads JACKCAT
@@ -96,7 +144,7 @@ Real-calculator testing has confirmed named still-image display, NYAN CAT animat
 
 JACKVIEW uses a **320 x 210** media viewport beginning below the Python header area.
 
-For new viewer-media imports, TI-JACK now scales images and GIF frames **up or down** to the largest size that fits inside that viewport while preserving the source aspect ratio. It does not stretch the image to a different aspect ratio and does not crop simply to fill both dimensions.
+For new viewer-media imports, TI-JACK scales images and GIF frames **up or down** to the largest size that fits inside that viewport while preserving the source aspect ratio. It does not stretch the image to a different aspect ratio and does not crop simply to fill both dimensions.
 
 Examples:
 
@@ -110,7 +158,7 @@ JACKCAT records the prepared media width and height. JACKVIEW uses those values 
 
 When switching from one media item to another, JACKVIEW clears the previous screen before drawing the new item. Animated GIF frames are **not** cleared between every frame, avoiding unnecessary flicker and preserving playback speed.
 
-Existing AppVars are not resampled in place. To get the new full-viewport scaling on an image or GIF that was prepared by an older TI-JACK build, retransmit the original source image/GIF with v0.20.1 or later. Existing smaller media can still be centered after JACKCAT is regenerated because TI-JACK reads the dimensions from the IM8C data.
+Existing AppVars are not resampled in place. To get the current full-viewport scaling on an image or GIF that was prepared by an older TI-JACK build, retransmit the original source image/GIF. Existing smaller media can still be centered after JACKCAT is regenerated because TI-JACK reads the dimensions from the IM8C data.
 
 ### Still images
 
@@ -130,13 +178,14 @@ TI-JACK:
 - uses indexed RGB565 color with up to 256 palette entries;
 - preserves one-bit transparency where possible;
 - chooses indexed or RLE IM8C storage based on size;
-- can reduce resolution further if necessary to fit Evo media limits.
+- can reduce resolution further if necessary to fit Evo media limits;
+- sends the prepared viewer AppVar to Archive.
 
 ### Animated GIFs
 
 GIFs are decoded and composited on Android. TI-JACK creates one IM8C AppVar per retained frame plus a small `TIJGIF01` manifest containing frame names, timing, dimensions, and loop metadata.
 
-Frames are transmitted before the manifest so an interrupted transfer does not leave a valid manifest pointing to frames that never arrived.
+Frames are transmitted before the manifest so an interrupted transfer does not leave a valid manifest pointing to frames that never arrived. v0.21.0 adds **CLEAN GIF** specifically to recover frame groups left behind by that safety ordering.
 
 Current GIF policy:
 
@@ -144,8 +193,9 @@ Current GIF policy:
 - a source GIF longer than 300 frames is **clipped to its first 300 frames** instead of being rejected for frame count;
 - retained frames keep their original order and delays;
 - frames after number 300 are omitted;
-- the generated-media budget is currently **6 MiB per GIF**;
-- TI-JACK progressively reduces animation resolution when needed to fit that budget.
+- the converter progressively reduces animation resolution when needed to fit IM8C/internal media limits;
+- the Android transfer layer applies a **2.4 MiB prepared-media guard** and an Archive free-space preflight before sending generated GIF variables;
+- generated GIF frames and the final manifest target Archive directly.
 
 The Evo only allows eight-character variable names. TI-JACK therefore uses a six-character frame prefix plus a two-character suffix:
 
@@ -176,12 +226,12 @@ GIF:     UP faster · DOWN slower · ENTER pause/resume
 Android-to-calculator transfers follow this path:
 
 ```text
-recognize -> validate/convert -> transmit -> reread directory -> download back -> compare bytes
+recognize -> validate/convert -> preflight -> transmit -> reread directory -> download back -> compare bytes
 ```
 
 A USB acknowledgement alone is not treated as success.
 
-Calculator deletion is also verified by rereading the directory and confirming the exact variable identity disappeared.
+Calculator deletion is also verified by rereading the directory and confirming the exact variable identity disappeared. RAM/Archive moves similarly verify both final memory location and byte-for-byte contents.
 
 ## Evo USB transport
 
@@ -194,7 +244,7 @@ Transport: CDC/ACM
 Baud:      115200
 ```
 
-Uploads use the observed Kermit-style `S/F/A/D*/Z/B` transaction. Protocol notes live in [`PROTOCOL_NOTES.md`](PROTOCOL_NOTES.md).
+Uploads and RAM/Archive moves use the observed Kermit-style `S/F/A/D*/Z/B` transaction. The `memtarget` parameter chooses RAM or Archive while `policy=1` permits an in-place overwrite for a verified memory move. Protocol notes live in [`PROTOCOL_NOTES.md`](PROTOCOL_NOTES.md).
 
 ## Build
 
@@ -219,20 +269,23 @@ GitHub Actions builds the debug APK from `.github/workflows/build-debug-apk.yml`
 ## Current limitations
 
 - The Android USB transport currently targets the TI-84 Evo only.
+- `EST FREE` is deliberately a conservative calculation from directory sizes; TI-JACK does not yet read the Evo's exact OS RAM-free and Archive-free counters from the protocol.
+- The current safe working capacities are 560 KiB RAM and 2700 KiB Archive, so the app may under-report usable free space on some calculators rather than risk over-promising it.
 - Legacy TI-BASIC conversion does not yet cover every token or every CE/Evo behavioral difference.
 - The pixel-exact SNAKE compatibility path fixes the observed green turn artifact but currently makes movement slower than the original conversion.
-- JACKVIEW/JACKCAT synchronization is still being exercised with larger and more varied real-calculator media libraries.
+- JACKVIEW/JACKCAT synchronization and the new orphan-frame cleanup are still being exercised with larger and more varied real-calculator media libraries.
 - A GIF longer than 300 frames is intentionally clipped rather than fully preserved.
-- Very large media may be reduced in resolution to stay within current IM8C/generated-media limits.
+- Large media may be reduced in resolution by the converter and is additionally subject to the 2.4 MiB prepared-media guard.
 - `Image1`-`Image7` graph backgrounds are separate from JACKVIEW's IM8C library.
 
 ## Project direction
 
-TI-JACK is intended to become one transfer application for multiple TI calculator generations. The project keeps transport, file recognition, conversion, compatibility analysis, validation, conflict handling, media preparation, and verification separated so additional calculators can be added without rebuilding the whole user experience.
+TI-JACK is intended to become one transfer application for multiple TI calculator generations. The project keeps transport, file recognition, conversion, compatibility analysis, validation, conflict handling, media preparation, memory management, and verification separated so additional calculators can be added without rebuilding the whole user experience.
 
 Near-term work is focused on:
 
-- JACKVIEW testing with larger image/GIF libraries;
+- real-calculator validation of v0.21.0 RAM/Archive moves, memory preflight, and GIF cleanup;
+- research into an exact Evo free-memory protocol resource if one is exposed;
 - performance improvements for legacy-program compatibility transforms;
 - broader TI-BASIC token coverage;
 - additional TI calculator transports.
