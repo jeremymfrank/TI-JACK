@@ -16,6 +16,8 @@ hh01/get/hh01/inf/res?name=directory&gotohome=1
 
 The returned Kermit data stream is decoded and parsed as CBOR. The directory `data` array supplies the tokenized/display name, variable type, size, and RAM/archive location.
 
+The currently observed directory payload does **not** expose the same exact `RAM FREE` / `ARC FREE` counters shown by the calculator's Memory screen. v0.21.0 therefore treats free-space values in the Android UI as conservative estimates calculated from directory entries rather than protocol-provided counters.
+
 ## Download
 
 Variable downloads use:
@@ -34,6 +36,13 @@ Variable uploads use:
 hh01/xfr/var?name=<token-name>&type=<type>&memtarget=<0|1>&policy=<0|1>
 ```
 
+Observed `memtarget` behavior:
+
+```text
+memtarget=0  -> RAM
+memtarget=1  -> Archive
+```
+
 The observed upload transaction is:
 
 ```text
@@ -48,6 +57,27 @@ TI-JACK does not treat the transport acknowledgment alone as success. After uplo
 2. finds the expected variable by type and token identity,
 3. downloads the variable back,
 4. requires the downloaded bytes to match the transmitted bytes.
+
+JACKVIEW media is explicitly written with `memtarget=1` in v0.21.0 so multi-frame animation data does not consume RAM first. Native uploads without an explicit target retain the prior behavior: use their normal target and, when a RAM write is rejected as a memory/data-target failure, retry in Archive.
+
+## RAM / Archive move
+
+v0.21.0 moves an existing variable by reusing the verified upload transaction instead of using a delete-first sequence:
+
+```text
+download current variable
+  -> validate identity and bytes
+  -> upload same bytes with policy=1
+  -> set memtarget=0 (RAM) or memtarget=1 (Archive)
+  -> reread directory
+  -> verify final memory location
+  -> download again
+  -> byte-for-byte compare
+```
+
+Using `policy=1` allows the variable with the same identity to be replaced in place while `memtarget` changes its memory location. TI-JACK reports the move as successful only after the directory location and read-back bytes both verify.
+
+This avoids deleting the only copy before the destination-memory write is known to have succeeded.
 
 ## Delete
 
