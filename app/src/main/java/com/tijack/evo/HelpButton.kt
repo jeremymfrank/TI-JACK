@@ -58,6 +58,8 @@ class HelpButton @JvmOverloads constructor(
         • Programs using the classic 265 × 165 CE graph canvas are centered on the Evo when TI-JACK can identify that layout safely.
         • A token or layout TI-JACK cannot convert safely is refused instead of guessed.
         • PNG, JPG, JPEG, and WebP files with ordinary names become named IM8C .8xv2 AppVars for JACKVIEW.
+        • JACKVIEW media is scaled up or down to the largest aspect-preserving fit within the 320 × 210 viewer area and centered when letterboxing remains.
+        • JACKVIEW clears the previous media item before opening the next image or animation; GIF frames are not cleared between frames.
         • Animated GIFs become IM8C frame AppVars plus a TIJGIF01 manifest. Frames are sent before the manifest.
         • GIFs longer than 300 frames are clipped to their first 300 frames instead of being rejected.
         • JACKVIEW is bundled with TI-JACK. TI-JACK installs or updates JACKVIEW as needed and regenerates JACKCAT from verified IM8C media on the calculator.
