@@ -13,6 +13,8 @@ internal object JackViewManager {
     private const val LEGACY_HEX_FRAME_LIMIT = 0x100
     private const val BASE36_FRAME_LIMIT = 36 * 36
     private const val BASE36_DIGITS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    private const val VIEWPORT_WIDTH = 320
+    private const val VIEWPORT_HEIGHT = 210
     private const val JACKVIEW_NAME = "JACKVIEW"
     private const val JACKCAT_NAME = "JACKCAT"
 
@@ -20,12 +22,16 @@ internal object JackViewManager {
         val title: String,
         val base: String,
         val frameCount: Int,
-        val defaultDelayMs: Int = 0
+        val defaultDelayMs: Int = 0,
+        val width: Int = VIEWPORT_WIDTH,
+        val height: Int = VIEWPORT_HEIGHT
     )
 
     private data class GifManifest(
         val title: String,
-        val frameNames: List<String>
+        val frameNames: List<String>,
+        val width: Int,
+        val height: Int
     )
 
     fun sync(
@@ -50,6 +56,7 @@ internal object JackViewManager {
         }
 
         val imageNames = LinkedHashSet<String>()
+        val imageDimensions = LinkedHashMap<String, Pair<Int, Int>>()
         val manifests = ArrayList<GifManifest>()
         val skippedAppVars = ArrayList<String>()
 
@@ -65,7 +72,12 @@ internal object JackViewManager {
                 val data = appVarData(file)
                 val core = lengthPrefixedCore(data) ?: continue
                 when {
-                    core.startsWithAscii("IM8C") -> imageNames += entry.name
+                    core.startsWithAscii("IM8C") -> {
+                        imageNames += entry.name
+                        parseIm8cDimensions(core)?.let {
+                            imageDimensions[entry.name] = it
+                        }
+                    }
                     core.startsWithAscii("TIJGIF01") -> {
                         parseGifManifest(entry.name, core)?.let { manifests += it }
                     }
@@ -89,7 +101,12 @@ internal object JackViewManager {
         for (manifest in manifests) {
             val frames = manifest.frameNames
             if (frames.isEmpty() || !frames.all { it in imageNames }) continue
-            val item = mediaItemForFrames(manifest.title, frames) ?: continue
+            val item = mediaItemForFrames(
+                manifest.title,
+                frames,
+                manifest.width,
+                manifest.height
+            ) ?: continue
             media += item
             consumedFrames += frames
         }
@@ -130,13 +147,31 @@ internal object JackViewManager {
             val frames = (0 until count).map {
                 prefix + if (useBase36) base36Suffix(it) else "%02X".format(it)
             }
-            media += MediaItem(prefix, prefix, count, 0)
+            val dimensions = imageDimensions[frames.first()]
+                ?: Pair(VIEWPORT_WIDTH, VIEWPORT_HEIGHT)
+            media += MediaItem(
+                title = prefix,
+                base = prefix,
+                frameCount = count,
+                defaultDelayMs = 0,
+                width = dimensions.first,
+                height = dimensions.second
+            )
             consumedFrames += frames
         }
 
         for (name in imageNames) {
             if (name !in consumedFrames) {
-                media += MediaItem(titleFor(name), name, 1, 0)
+                val dimensions = imageDimensions[name]
+                    ?: Pair(VIEWPORT_WIDTH, VIEWPORT_HEIGHT)
+                media += MediaItem(
+                    title = titleFor(name),
+                    base = name,
+                    frameCount = 1,
+                    defaultDelayMs = 0,
+                    width = dimensions.first,
+                    height = dimensions.second
+                )
             }
         }
 
@@ -207,9 +242,20 @@ internal object JackViewManager {
         return data.copyOfRange(2, 2 + size)
     }
 
+    private fun parseIm8cDimensions(core: ByteArray): Pair<Int, Int>? {
+        if (!core.startsWithAscii("IM8C") || core.size < 10) return null
+        val width = u16le(core, 6)
+        val height = u16le(core, 8)
+        if (width <= 0 || height <= 0) return null
+        return Pair(width, height)
+    }
+
     private fun parseGifManifest(title: String, core: ByteArray): GifManifest? {
         if (!core.startsWithAscii("TIJGIF01") || core.size < 20) return null
+        val width = u16le(core, 8)
+        val height = u16le(core, 10)
         val frameCount = u16le(core, 12)
+        if (width <= 0 || height <= 0) return null
         if (frameCount !in 1..MAX_GIF_FRAMES) return null
         if (core.size < 20 + frameCount * 10) return null
 
@@ -223,11 +269,18 @@ internal object JackViewManager {
             names += name
             offset += 10
         }
-        return GifManifest(titleFor(title), names)
+        return GifManifest(titleFor(title), names, width, height)
     }
 
-    private fun mediaItemForFrames(title: String, frames: List<String>): MediaItem? {
-        if (frames.size == 1) return MediaItem(title, frames[0], 1, 0)
+    private fun mediaItemForFrames(
+        title: String,
+        frames: List<String>,
+        width: Int,
+        height: Int
+    ): MediaItem? {
+        if (frames.size == 1) {
+            return MediaItem(title, frames[0], 1, 0, width, height)
+        }
         if (frames.size !in 2..MAX_GIF_FRAMES) return null
         val first = frames[0]
         if (first.length != 8 || first.takeLast(2) != "00") return null
@@ -237,12 +290,12 @@ internal object JackViewManager {
             val suffix = if (useBase36) base36Suffix(i) else "%02X".format(i)
             if (frames[i] != prefix + suffix) return null
         }
-        return MediaItem(title, prefix, frames.size, 0)
+        return MediaItem(title, prefix, frames.size, 0, width, height)
     }
 
     private fun buildCatalogSource(items: List<MediaItem>): String = buildString {
         append("# TI-JACK / JACKVIEW media catalog\n")
-        append("# title, image name or six-character frame prefix, frame count, added delay ms\n")
+        append("# title, image/frame base, frame count, added delay ms, width, height\n")
         append("media=(\n")
         for (item in items) {
             append(" (\"")
@@ -253,6 +306,10 @@ internal object JackViewManager {
             append(item.frameCount)
             append(',')
             append(item.defaultDelayMs)
+            append(',')
+            append(item.width)
+            append(',')
+            append(item.height)
             append("),\n")
         }
         append(")\n")
@@ -292,6 +349,9 @@ RIGHT=26
 ENTER=105
 CLEAR=45
 B36="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+VW=320
+VH=210
+VY=30
 
 try:
  from JACKCAT import media
@@ -320,6 +380,18 @@ def frame_names(base,count):
   out.append(base+s)
   i+=1
  return out
+
+def media_pos(item):
+ w=VW
+ h=VH
+ if len(item)>5:
+  w=item[4]
+  h=item[5]
+ x=(VW-w)//2
+ y=VY+(VH-h)//2
+ if x<0:x=0
+ if y<VY:y=VY
+ return x,y
 
 def browser(sel):
  n=len(media)
@@ -393,13 +465,22 @@ def wait_delay(delay,last):
  return delay,last,0
 
 def show_item(sel,delay):
- title,base,count,default_delay=media[sel]
+ item=media[sel]
+ title=item[0]
+ base=item[1]
+ count=item[2]
+ default_delay=item[3]
+ x,y=media_pos(item)
  if delay<0:
   delay=default_delay/1000
  frames=frame_names(base,count)
 
+ # Clear once when a new still/animation is opened. GIF frames are then drawn
+ # without clearing between frames to avoid flicker and preserve playback speed.
+ disp_clr()
+
  if count==1:
-  drawImage(frames[0],0,30)
+  drawImage(frames[0],x,y)
   while True:
    k=get_key(1)
    released()
@@ -410,7 +491,7 @@ def show_item(sel,delay):
  i=0
  last=0
  while True:
-  drawImage(frames[i],0,30)
+  drawImage(frames[i],x,y)
   i+=1
   if i==count:i=0
 
