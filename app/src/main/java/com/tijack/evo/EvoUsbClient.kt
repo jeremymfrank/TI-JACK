@@ -180,20 +180,25 @@ internal class EvoUsbClient(
 
     fun uploadVariable(
         file: ByteArray,
-        overwrite: Boolean
+        overwrite: Boolean,
+        archiveTarget: Boolean? = null
     ): EvoUploadResult = withSession {
         val info = EvoFileCodec.inspect(file)
         val tokenName = info.tokenName
         require(tokenName != null && tokenName.isNotEmpty()) {
             "Evo file metadata has no variable name"
         }
-        var archive = info.type in setOf(4, 5, 18)
+        var archive = archiveTarget ?: (info.type in setOf(4, 5, 18))
 
         try {
             putVariable(file, info, archive, overwrite)
         } catch (first: Throwable) {
             val text = first.message.orEmpty()
-            if (!archive && ("PM" in text || "DP" in text)) {
+            if (
+                archiveTarget == null &&
+                !archive &&
+                ("PM" in text || "DP" in text || "NM" in text)
+            ) {
                 log(
                     "RAM target rejected type=${info.type}; " +
                         "retrying Archive"
@@ -208,19 +213,60 @@ internal class EvoUsbClient(
         // Give the calculator a short moment to publish the newly committed
         // variable into its directory before verification starts.
         SystemClock.sleep(120)
-        verifyUpload(info, file)
+        val verified = verifyUpload(info, file)
+        if (archiveTarget != null && verified.archived != archive) {
+            throw IOException(
+                "upload verified but ${verified.name} is in " +
+                    if (verified.archived) "Archive instead of RAM" else "RAM instead of Archive"
+            )
+        }
         log(
             "uploaded and verified type=${info.type} " +
                 "payload=${file.size} bytes to " +
+                if (verified.archived) "Archive" else "RAM"
+        )
+        EvoUploadResult(info, verified.archived)
+    }
+
+    /**
+     * Move an existing variable between RAM and Archive without deleting it
+     * first. The calculator receives the exact bytes read back from the current
+     * variable with overwrite enabled and the requested memtarget, then TI-JACK
+     * verifies both location and bytes.
+     */
+    fun setVariableArchived(entry: EvoEntry, archive: Boolean) = withSession {
+        if (entry.archived == archive) return@withSession
+
+        val file = downloadVariable(entry)
+        val info = EvoFileCodec.inspect(file)
+        require(EvoFileCodec.sameIdentity(info, entry)) {
+            "downloaded variable identity changed before memory move"
+        }
+
+        log(
+            "memory move ${entry.name} type=${entry.type} " +
+                "${if (entry.archived) "Archive" else "RAM"} -> " +
                 if (archive) "Archive" else "RAM"
         )
-        EvoUploadResult(info, archive)
+        putVariable(file, info, archive, overwrite = true)
+        SystemClock.sleep(120)
+        val verified = verifyUpload(info, file)
+        if (verified.archived != archive) {
+            throw IOException(
+                "calculator kept ${verified.name} in " +
+                    if (verified.archived) "Archive" else "RAM"
+            )
+        }
+        log(
+            "memory move verified ${verified.name} -> " +
+                if (archive) "Archive" else "RAM"
+        )
     }
 
     private fun verifyUpload(
         info: EvoFileInfo,
         expectedFile: ByteArray
-    ) {
+    ): EvoEntry {
         var match: EvoEntry? = null
         var lastError: Throwable? = null
 
@@ -265,6 +311,7 @@ internal class EvoUsbClient(
             )
         }
         log("upload read-back verified ${entry.name} ${readBack.size} bytes")
+        return entry
     }
 
     private fun putVariable(
