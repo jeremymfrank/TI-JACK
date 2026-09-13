@@ -1,6 +1,6 @@
 # Third-party notes
 
-TI-JACK Android v0.20 uses:
+TI-JACK Android v0.20.1 uses:
 
 - `usb-serial-for-android` by mik3y, version 3.11.0, MIT licensed.
 - Android SDK / Kotlin / Gradle components under their respective licenses.
