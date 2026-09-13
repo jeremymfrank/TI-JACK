@@ -6,13 +6,13 @@
 
 **Universal file transfer for TI calculators.**
 
-TI-JACK is an open-source file transfer and compatibility project for Texas Instruments calculators. The current Android transport targets the **TI-84 Evo** USB protocol, while transfer, conversion, validation, and conflict handling are kept separate so additional TI families can be added later.
+TI-JACK is an open-source file transfer and compatibility project for Texas Instruments calculators. The current Android transport targets the **TI-84 Evo** USB protocol, while transfer, conversion, validation, media preparation, and conflict handling are kept separate so additional TI families can be added later.
 
 ## Current status
 
-**Android v0.18**
+**Android v0.19 preview**
 
-The Evo transfer path works on real hardware in both directions. TI-JACK can browse calculator variables, transfer multiple files, replace or skip duplicates, delete files on either side, and verify uploads by downloading them back from the calculator. Legacy TI-BASIC conversion and media preparation are active compatibility previews.
+The Evo transfer path works on real hardware in both directions. TI-JACK can browse calculator variables, transfer multiple files, replace or skip duplicates, delete files on either side, and verify uploads by downloading them back from the calculator. Legacy TI-BASIC conversion, named image/GIF preparation, and the first bundled JACKVIEW workflow are active compatibility previews.
 
 | Capability | Status |
 | --- | --- |
@@ -28,9 +28,11 @@ The Evo transfer path works on real hardware in both directions. TI-JACK can bro
 | RAM / Archive display | Working |
 | Android folder picker | Working |
 | Legacy TI-BASIC `.8xp` → Evo `.8xp2` | Preview; hardware-tested with SNAKE |
-| Classic CE canvas centering / compatibility fixes | Preview; hardware-tested with SNAKE |
-| Named PNG / JPG / JPEG / WebP → IM8C `.8xv2` | Preview; ready for hardware/viewer testing |
-| Animated GIF → IM8C frames + animation manifest | Preview; ready for hardware/viewer testing |
+| Classic CE canvas compatibility | Preview; hardware-tested with SNAKE |
+| Named PNG / JPG / JPEG / WebP → IM8C `.8xv2` | Preview; hardware-tested IM8C display path |
+| Animated GIF → IM8C frames + `TIJGIF01` manifest | Preview; frame playback hardware-tested |
+| Bundled calculator-side `JACKVIEW` | Preview; browser/player source hardware-tested |
+| Automatic `JACKCAT` regeneration | Preview; Android integration awaiting hardware validation |
 | Explicit `Image1`–`Image7` graph-background import | Implemented |
 | Additional calculator families | Planned |
 
@@ -61,7 +63,7 @@ On the tested Samsung phone, a direct USB-C-to-USB-C cable normally puts the pho
 4. Tap **TRANSMIT** in the desired direction.
 5. If the destination already contains a variable, choose **REPLACE** or **SKIP EXISTING**.
 6. Use **DELETE**, **SELECT ALL**, and **CLEAR** as needed.
-7. Tap **?** for the installed version, connection tips, and conversion notes.
+7. Tap **?** for the installed version, connection tips, media notes, and JACKVIEW controls.
 
 Do not unplug during an active transfer. Normal disconnect/reconnect is automatic after a transfer completes.
 
@@ -86,33 +88,54 @@ For programs built around the classic **265 × 165** color-calculator graph area
 
 These transforms are deliberately narrow. If TI-JACK cannot identify a layout or command safely, conversion is refused rather than silently changing program behavior.
 
-### Viewer media
+## JACKVIEW media
 
-Ordinary still images now default to **named Evo IM8C AppVars (`.8xv2`)** rather than consuming a numbered graph-background slot. A file such as:
+`JACKVIEW` is the calculator-side image browser/player bundled with TI-JACK. TI-JACK owns media preparation and the catalog; JACKVIEW stays small and uses Evo Python's native `ti_graphics.drawImage()` path instead of decoding pixels in Python.
+
+On a normal top-level calculator directory refresh, TI-JACK now:
+
+1. installs or updates `JACKVIEW.8xpy2` when needed;
+2. scans Evo AppVars small enough to contain IM8C images or TI-JACK GIF manifests;
+3. identifies static IM8C images and complete GIF frame sets;
+4. regenerates `JACKCAT.8xpy2` from media actually present on the calculator;
+5. uploads JACKCAT only when its generated contents changed.
+
+This means adding or deleting viewer images through TI-JACK causes JACKCAT to follow the calculator automatically. A failed/incomplete AppVar scan does **not** replace the previous catalog.
+
+### Static images
+
+Ordinary still images default to **named Evo IM8C AppVars (`.8xv2`)** rather than consuming a numbered graph-background slot. A file such as:
 
 ```text
 FMRLOGO.png
 ```
 
-becomes a calculator AppVar named `FMRLOGO` when that name fits the Evo naming rules. Longer or unsuitable filenames are shortened deterministically.
+becomes a calculator AppVar such as `FMRLOGO`. JACKCAT records that exact AppVar name, so static media does not need an `Image1`–`Image7` slot and does not need a `00` frame suffix.
 
-TI-JACK fits still images within **320 × 210**, preserves aspect ratio, uses up to 256 indexed RGB565 colors, keeps one-bit transparency when present, and chooses indexed or RLE IM8C storage based on size. The result is a standard IM8C image AppVar, which also gives the future viewer a simple native image primitive rather than a TI-JACK-only pixel format.
+TI-JACK fits still images within **320 × 210**, preserves aspect ratio, uses up to 256 indexed RGB565 colors, keeps one-bit transparency when present, and chooses indexed or RLE IM8C storage based on size.
 
-On an Evo Python environment with `ti_graphics`, a static test image can be exercised independently of the future viewer, for example:
+### Animated GIFs
 
-```python
-from ti_graphics import drawImage
-from ti_system import disp_wait
+Animated GIFs are decoded/composited on Android before transfer. TI-JACK sends one IM8C AppVar per frame and a small **`TIJGIF01` manifest AppVar** describing frame order, dimensions, timing, and loop metadata. Frame AppVars use a six-character prefix plus two-digit hexadecimal suffixes (`00` through `FF`). Frames are sent before the manifest.
 
-drawImage("FMRLOGO", 0, 30)
-disp_wait()
+JACKCAT uses the manifest to present the frame set as one GIF. If a legacy TI-JACK/JACKVIEW frame set has no manifest, a contiguous `PREFIX00`, `PREFIX01`, ... sequence can still be recovered as an animation.
+
+The current preparation preview caps a GIF at 120 frames and 6 MiB of generated calculator variables. The manifest format is documented in [`docs/TIJ_GIF_MANIFEST.md`](docs/TIJ_GIF_MANIFEST.md).
+
+### JACKVIEW controls
+
+```text
+Browser: UP/DOWN select · ENTER open · CLEAR exit
+Still:   LEFT/RIGHT previous/next · CLEAR return
+GIF:     UP faster · DOWN slower · ENTER pause/resume
+         LEFT/RIGHT previous/next · CLEAR return
 ```
 
-Animated GIFs are decoded on Android before transfer. TI-JACK preserves the composited frame sequence, timing, and loop metadata, then sends one IM8C AppVar per frame plus a small **`TIJGIF01` manifest AppVar** describing frame order and delays. Frames are sent first and the manifest last. The current preview caps a GIF at 120 frames and 6 MiB of generated calculator variables.
+JACKVIEW starts GIF playback with zero added delay unless JACKCAT specifies otherwise. It does not clear between full-frame animation frames, which was important for good hardware playback speed.
 
-The manifest is intentionally documented so the separate calculator viewer project can consume it without depending on TI-JACK internals. See [`docs/TIJ_GIF_MANIFEST.md`](docs/TIJ_GIF_MANIFEST.md).
+### Numbered graph backgrounds
 
-If a still source is explicitly named `Image1` through `Image7` (or `Img1` through `Img7`), TI-JACK keeps the existing graph-background behavior and creates that `.8ca2` image slot instead.
+If a still source is explicitly named `Image1` through `Image7` (or `Img1` through `Img7`), TI-JACK keeps the graph-background behavior and creates that `.8ca2` image slot instead. These OS graph-background variables are separate from JACKVIEW's IM8C media library and are not added to JACKCAT.
 
 ## Transfer integrity
 
@@ -122,7 +145,7 @@ Android → calculator transfers are not considered successful merely because th
 recognize → validate/convert → transmit → reread directory → download back → compare bytes
 ```
 
-For converted files, validation happens before USB transmission. Calculator-side deletion is also verified by rereading the directory and confirming the variable is gone.
+For converted files, validation happens before USB transmission. Calculator-side deletion is also verified by rereading the directory and confirming the variable is gone. JACKVIEW and JACKCAT use the same upload/read-back verification path as user files.
 
 ## Evo USB protocol
 
@@ -152,16 +175,16 @@ androidx.documentfile: 1.0.1
 
 The app does not need Internet access for file conversion or calculator transfers.
 
-GitHub Actions builds every push to `main` with:
+GitHub Actions builds pushes to the active test branch and `main` with:
 
 ```text
 .github/workflows/build-debug-apk.yml
 ```
 
-The current artifact is named:
+The v0.19 preview artifact is named:
 
 ```text
-TI-JACK-Evo-Android-v0.18
+TI-JACK-Evo-Android-v0.19
 ```
 
 ## Known limitations
@@ -169,19 +192,19 @@ TI-JACK-Evo-Android-v0.18
 - The Android USB transport currently targets the TI-84 Evo; other calculator transports are not implemented yet.
 - Legacy `.8xp` conversion does not yet cover every TI-BASIC token or every CE/Evo behavioral difference.
 - The current pixel-exact SNAKE compatibility pass removes turn artifacts but has been observed to make movement slower; that optimization remains active work.
-- The new viewer-media path is a preview awaiting real-hardware validation with named IM8C images and prepared GIFs.
-- GIF playback requires the separate calculator-side viewer project; TI-JACK prepares and transfers the media but does not run the viewer on the calculator.
+- JACKVIEW/JACKCAT automatic synchronization is new in v0.19 and still needs real-calculator validation as an integrated workflow.
+- JACKCAT catalogs IM8C AppVars that JACKVIEW can display; TI OS `Image1`–`Image7` background variables are a separate format and are intentionally excluded.
 - Direct USB-C-to-USB-C behavior depends on the phone's USB role; use a phone-side OTG/host adapter for the tested reliable setup.
 
 ## Project direction
 
-TI-JACK is intended to become one transfer application rather than a separate utility for every TI calculator generation. File selection, duplicate handling, conversion, deletion, validation, and verification are kept separate from calculator-specific transports so new calculator families can be added underneath the same workflow.
+TI-JACK is intended to become one transfer application rather than a separate utility for every TI calculator generation. File selection, duplicate handling, conversion, deletion, validation, verification, and optional calculator-side companion software are kept behind the same workflow so new calculator families can be added without rebuilding the entire user experience.
 
-Near-term work is focused on hardware-testing the new viewer-media output, optimizing CE program fidelity/performance, expanding legacy token coverage from real programs, and adding more TI calculator protocols. The calculator-side media viewer is intentionally a separate software project; TI-JACK's role is to prepare and transfer compatible media for it.
+Near-term work is focused on hardware-testing automatic JACKVIEW/JACKCAT synchronization, optimizing CE program fidelity/performance, expanding legacy token coverage from real programs, and adding more TI calculator protocols.
 
 ## Credits
 
-TI-JACK project: **Jawatech / jeremymfrank**.
+TI-JACK / JACKVIEW project: **Jawatech / jeremymfrank**.
 
 Android USB serial support is provided by the MIT-licensed `usb-serial-for-android` project. Evo file/token research was cross-checked against Adrien "Adriweb" Bertrand's MIT-licensed `tivars_lib_cpp`. IM8C behavior was independently implemented from public format information and cross-checked against TI-Planet's `img2calc` research; no `img2calc` source is bundled in the APK. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
