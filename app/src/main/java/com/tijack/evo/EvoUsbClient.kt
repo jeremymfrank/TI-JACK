@@ -86,10 +86,29 @@ internal class EvoUsbClient(
         }
     }
 
-    fun listFiles(): List<EvoEntry> = withSession {
+    fun listFiles(): List<EvoEntry> {
+        // Only a top-level directory refresh triggers JACKVIEW/JACKCAT sync.
+        // Directory reads performed inside upload/delete verification stay raw,
+        // preventing recursive catalog writes during an active transaction.
+        val allowJackViewSync = sessionDepth == 0
+        return withSession {
+            val entries = listFilesRaw()
+            if (!allowJackViewSync) return@withSession entries
+
+            val changed = try {
+                JackViewManager.sync(this, entries, log)
+            } catch (t: Throwable) {
+                log("JACKVIEW auto-sync warning: ${t.message.orEmpty()}")
+                false
+            }
+            if (changed) listFilesRaw() else entries
+        }
+    }
+
+    private fun listFilesRaw(): List<EvoEntry> {
         val raw = getRequest(DIRECTORY_URL)
         log("directory payload ${raw.size} bytes")
-        EvoDirectory.parse(raw)
+        return EvoDirectory.parse(raw)
     }
 
     fun downloadVariable(entry: EvoEntry): ByteArray = withSession {
