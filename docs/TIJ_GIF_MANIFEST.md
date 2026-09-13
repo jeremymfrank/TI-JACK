@@ -1,6 +1,6 @@
 # TI-JACK viewer media format
 
-TI-JACK can prepare ordinary phone/computer images for a separate TI-84 Evo viewer without consuming the calculator's numbered graph-background slots.
+TI-JACK can prepare ordinary phone/computer images for JACKVIEW without consuming the calculator's numbered graph-background slots.
 
 ## Static images
 
@@ -42,7 +42,7 @@ For RLE mode:
 
 TI-JACK chooses indexed or RLE storage per image based on which is smaller. Images with at most 256 colors keep their RGB565 palette directly. Richer images use a deterministic reduced palette. Transparency is reduced to one transparent palette index.
 
-The current converter preserves aspect ratio, never upscales, and fits media within 320 x 210.
+The converter preserves aspect ratio, never upscales, and fits media within 320 x 210.
 
 ## Animated GIFs
 
@@ -52,6 +52,21 @@ A GIF is prepared as:
 2. one small TI-JACK manifest AppVar, transferred **last**.
 
 The manifest's calculator variable name is derived from the GIF filename. Frame names are deterministic eight-character calculator names beginning with `J` (or `K` only if needed to avoid a name collision).
+
+### Frame limit
+
+TI-JACK accepts GIFs with more than 300 source frames. It does not reject them solely because of frame count. Instead, it clips the animation to the **first 300 frames** and transfers those frames with their original order and delays. Frames after 300 are omitted.
+
+The current generated-media budget remains 6 MiB per GIF. If needed, TI-JACK progressively reduces the animation resolution to fit that budget.
+
+### Frame naming
+
+The Evo variable-name limit is eight characters, so TI-JACK uses a six-character frame prefix plus a two-character suffix.
+
+- animations with 1-256 frames use the original two-digit hexadecimal suffixes: `00` through `FF`;
+- animations with 257-300 frames use two-digit base36 suffixes using `0-9A-Z`.
+
+JACKVIEW chooses the matching suffix scheme from the frame count stored in JACKCAT. The `TIJGIF01` manifest always contains the exact frame names, so external tools should read those names directly rather than recreate them.
 
 The manifest AppVar data is:
 
@@ -74,18 +89,24 @@ repeat frame_count times:
     u16le   delay_ms
 ```
 
-A future viewer should identify an AppVar by inspecting the bytes after the two-byte length prefix:
+A viewer identifies an AppVar by inspecting the bytes after the two-byte length prefix:
 
 - `IM8C` => directly displayable static/frame image;
 - `TIJGIF01` => animation manifest referencing IM8C frame AppVars.
 
-TI-JACK preserves GIF frame order, composited appearance, frame delays, and the Netscape loop count where present. Zero/unspecified frame delays are normalized for practical playback. The current preparation limit is 120 frames and 6 MiB of generated calculator variables per GIF.
+TI-JACK preserves the order, composited appearance, delays, and loop metadata for every retained frame. Zero/unspecified frame delays are normalized for practical playback.
 
 Frames are transmitted before the manifest so an interrupted transfer does not leave a valid manifest pointing at frames that were never sent.
 
+## JACKCAT
+
+`JACKCAT.8xpy2` is generated from viewer-compatible media found on the calculator. Static images are cataloged by exact AppVar name. GIF manifests are cataloged as one animation entry instead of exposing every frame individually.
+
+When a manifest is missing, TI-JACK can recover contiguous TI-JACK frame sets using the legacy hexadecimal naming scheme or the extended base36 naming scheme.
+
 ## Graph-background compatibility
 
-The older graph-background import path remains available deliberately and explicitly: name a still source `Image1.png` through `Image7.png` (or `Img1` through `Img7`) to create the corresponding Evo `.8ca2` background variable instead of viewer media.
+The graph-background import path remains available deliberately and explicitly: name a still source `Image1.png` through `Image7.png` (or `Img1` through `Img7`) to create the corresponding Evo `.8ca2` background variable instead of JACKVIEW media.
 
 ## Implementation note
 
