@@ -10,11 +10,11 @@ TI-JACK is an open-source file transfer and compatibility project for Texas Inst
 
 ## Current status
 
-**Android v0.19.1 preview**
+**Android v0.19.2 preview**
 
 The Evo transfer path works on real hardware in both directions. TI-JACK can browse calculator variables, transfer multiple files, replace or skip duplicates, delete files on either side, and verify uploads by downloading them back from the calculator. Legacy TI-BASIC conversion, named image/GIF preparation, and the bundled JACKVIEW workflow are active compatibility previews.
 
-v0.19.1 fixes the first v0.19 integration build so the JACKVIEW/JACKCAT manager is actually invoked on calculator connection and after calculator uploads/deletions. JACKCAT is therefore regenerated from the calculator's current viewer-media AppVars instead of merely having the sync code present but unused.
+v0.19.2 fixes JACKCAT bootstrap on calculators that contain unrelated or unreadable AppVars. One such AppVar could previously abort the entire media scan before JACKCAT was created. TI-JACK now skips only the unreadable AppVar, continues cataloging verified IM8C media, creates/updates JACKCAT, and verifies that both JACKVIEW and JACKCAT appear in the calculator directory.
 
 | Capability | Status |
 | --- | --- |
@@ -34,7 +34,7 @@ v0.19.1 fixes the first v0.19 integration build so the JACKVIEW/JACKCAT manager 
 | Named PNG / JPG / JPEG / WebP → IM8C `.8xv2` | Preview; hardware-tested IM8C display path |
 | Animated GIF → IM8C frames + `TIJGIF01` manifest | Preview; frame playback hardware-tested |
 | Bundled calculator-side `JACKVIEW` | Preview; browser/player source hardware-tested |
-| Automatic `JACKCAT` regeneration | Preview; v0.19.1 integration ready for hardware validation |
+| Automatic `JACKCAT` regeneration | Preview; v0.19.2 ready for hardware validation |
 | Explicit `Image1`–`Image7` graph-background import | Implemented |
 | Additional calculator families | Planned |
 
@@ -94,16 +94,19 @@ These transforms are deliberately narrow. If TI-JACK cannot identify a layout or
 
 `JACKVIEW` is the calculator-side image browser/player bundled with TI-JACK. TI-JACK owns media preparation and the catalog; JACKVIEW stays small and uses Evo Python's native `ti_graphics.drawImage()` path instead of decoding pixels in Python.
 
+`JACKCAT` is a normal Evo Python program (`JACKCAT.8xpy2`, type 15). It should appear in TI-JACK's calculator pane and in the calculator's Python program list alongside JACKVIEW. If JACKCAT is absent, the catalog synchronization did not complete.
+
 On calculator connection and after calculator-side media changes, TI-JACK:
 
 1. installs or updates `JACKVIEW.8xpy2` when needed;
-2. scans Evo AppVars small enough to contain IM8C images or TI-JACK GIF manifests;
-3. identifies static IM8C images and complete GIF frame sets;
-4. regenerates `JACKCAT.8xpy2` from media actually present on the calculator;
-5. uploads JACKCAT only when its generated contents changed;
-6. rereads the calculator directory when JACKVIEW or JACKCAT changed so the Android pane reflects the installed companion files.
+2. scans candidate Evo AppVars for IM8C images or TI-JACK GIF manifests;
+3. ignores unrelated or unreadable AppVars instead of aborting the whole catalog;
+4. identifies static IM8C images and complete GIF frame sets;
+5. regenerates `JACKCAT.8xpy2` from verified media present on the calculator;
+6. uploads JACKCAT only when its generated contents changed;
+7. verifies JACKVIEW and JACKCAT are present and rereads the calculator directory when either changed.
 
-This means adding or deleting viewer images through TI-JACK causes JACKCAT to follow the calculator automatically. A failed/incomplete AppVar scan does **not** replace the previous catalog.
+Adding or deleting viewer images through TI-JACK causes JACKCAT to follow the calculator automatically. Unknown AppVars are not deleted or modified by the media scan.
 
 ### Static images
 
@@ -121,7 +124,7 @@ TI-JACK fits still images within **320 × 210**, preserves aspect ratio, uses up
 
 Animated GIFs are decoded/composited on Android before transfer. TI-JACK sends one IM8C AppVar per frame and a small **`TIJGIF01` manifest AppVar** describing frame order, dimensions, timing, and loop metadata. Frame AppVars use a six-character prefix plus two-digit hexadecimal suffixes (`00` through `FF`). Frames are sent before the manifest.
 
-JACKCAT uses the manifest to present the frame set as one GIF. If a legacy TI-JACK/JACKVIEW frame set has no manifest, a contiguous `PREFIX00`, `PREFIX01`, ... sequence can still be recovered as an animation.
+JACKCAT uses the manifest to present the frame set as one GIF. If an older TI-JACK/JACKVIEW frame set has no manifest, a contiguous `PREFIX00`, `PREFIX01`, ... sequence can still be recovered as an animation.
 
 The current preparation preview caps a GIF at 120 frames and 6 MiB of generated calculator variables. The manifest format is documented in [`docs/TIJ_GIF_MANIFEST.md`](docs/TIJ_GIF_MANIFEST.md).
 
@@ -187,7 +190,7 @@ GitHub Actions builds pushes to the active test branch and `main` with:
 The current preview artifact is named:
 
 ```text
-TI-JACK-Evo-Android-v0.19.1
+TI-JACK-Evo-Android-v0.19.2
 ```
 
 ## Known limitations
