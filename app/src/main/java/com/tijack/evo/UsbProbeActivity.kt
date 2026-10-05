@@ -20,11 +20,11 @@ import android.widget.TextView
 import java.io.File
 
 /**
- * Temporary USB-role diagnostic launcher.
+ * TI USB-role and calculator descriptor diagnostic launcher.
  *
- * v0.3 reports Android USB-host capability, every USB device exposed through
- * UsbManager, attach/detach/USB-state broadcasts, phone charging state, and
- * best-effort Type-C sysfs role information where Android permits access.
+ * Probe 0.4 keeps the working Evo handoff and also recognizes a TI-Nspire
+ * CX II / CX II CAS as a diagnostic-only target. Nspire file transfer is not
+ * enabled here; the screen reports USB interfaces/endpoints for protocol work.
  */
 class UsbProbeActivity : Activity() {
 
@@ -100,7 +100,7 @@ class UsbProbeActivity : Activity() {
         })
 
         root.addView(TextView(this).apply {
-            text = "EVO / ANDROID USB ROLE PROBE 0.3"
+            text = "TI USB DEVICE PROBE 0.4"
             textSize = 12f
             typeface = Typeface.MONOSPACE
             setTextColor(0xFFB88700.toInt())
@@ -191,6 +191,7 @@ class UsbProbeActivity : Activity() {
             it.vendorId == EvoUsbClient.TI_VID &&
                 it.productId == EvoUsbClient.EVO_PID
         }
+        val nspireCxIi = devices.firstOrNull { NspireCxIiUsb.matches(it) }
 
         val hostFeature = packageManager.hasSystemFeature(PackageManager.FEATURE_USB_HOST)
         val battery = batteryDescription()
@@ -238,23 +239,37 @@ class UsbProbeActivity : Activity() {
             return
         }
 
+        if (nspireCxIi != null) {
+            status.text = "● TI-NSPIRE CX II USB FOUND · PROBE ONLY"
+            status.setTextColor(0xFF4CAF50.toInt())
+            details.text =
+                header +
+                    NspireCxIiUsb.describe(nspireCxIi) +
+                    "\nFILE TRANSFER: NOT ENABLED IN THIS PROBE BUILD\n\n" +
+                    describe(devices)
+            return
+        }
+
         status.text = when {
             !hostFeature -> "● ANDROID REPORTS NO USB HOST SUPPORT"
             devices.isEmpty() -> "● USB HOST CAPABLE · NO PERIPHERALS ENUMERATED"
-            else -> "● USB DEVICE SEEN · EVO ID NOT FOUND"
+            else -> "● USB DEVICE SEEN · SUPPORTED ID NOT FOUND"
         }
         status.setTextColor(0xFFFFB300.toInt())
 
         details.text = if (devices.isEmpty()) {
             header +
                 "USB DEVICE LIST IS EMPTY\n" +
-                "Expected Evo: 0451:E018\n\n" +
+                "Expected Evo: 0451:E018\n" +
+                "Expected Nspire CX II/CX II CAS: 0451:E022\n\n" +
                 "If PHONE POWER says CHARGING VIA USB while this list is empty, " +
                 "the phone is very likely operating as the USB power sink/device " +
                 "instead of enumerating the calculator as a host peripheral."
         } else {
             header + describe(devices) +
-                "\nEXPECTED EVO\nVID:PID 0451:E018"
+                "\nEXPECTED CALCULATORS\n" +
+                "TI-84 Evo: 0451:E018\n" +
+                "TI-Nspire CX II / CX II CAS: 0451:E022"
         }
     }
 
