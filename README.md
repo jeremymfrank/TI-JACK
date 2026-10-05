@@ -315,7 +315,7 @@ GitHub Actions builds the debug APK from `.github/workflows/build-debug-apk.yml`
 
 TI-JACK is no longer being scoped as Android/Evo-only.
 
-The first desktop target is **Windows**, with a calculator-backend model shared conceptually across hosts. The Evo remains a variable/RAM/Archive backend, while the **TI-Nspire CX II / CX II CAS** backend is filesystem-oriented and will expose folders, paths, and `.tns` documents.
+The first desktop target is **Windows**. A buildable **TI-JACK Desktop v0.1** now provides the two-pane classroom UI, persistent themes/settings, PC file browsing, and native Windows detection of TI USB devices. Calculator transfer controls are capability-gated until each Windows transport passes real-hardware verification. The Evo remains a variable/RAM/Archive backend, while the **TI-Nspire CX II / CX II CAS** backend is filesystem-oriented and will expose folders, paths, and `.tns` documents.
 
 The CX II implementation plan is:
 
@@ -335,6 +335,7 @@ See:
 - [Platform roadmap](docs/PLATFORM_ROADMAP.md)
 - [TI-Nspire CX II protocol notes](docs/NSPIRE_CXII_PROTOCOL.md)
 - [Desktop target](desktop/README.md)
+- [Windows desktop v0.1](desktop/windows/README.md)
 
 ## Project direction
 
