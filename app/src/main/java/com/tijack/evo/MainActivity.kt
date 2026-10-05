@@ -81,6 +81,7 @@ class MainActivity : Activity() {
 
     private var client: EvoUsbClient? = null
     private var currentDeviceId: Int? = null
+    private var nspireProbeDeviceId: Int? = null
     private var calculatorEntries: List<EvoEntry> = emptyList()
     private var folder: DocumentFile? = null
     private var pendingDownloads: List<EvoEntry> = emptyList()
@@ -249,6 +250,23 @@ class MainActivity : Activity() {
 
     private fun scanForEvo() {
         if (connecting || transferring) return
+
+        val nspire = usbManager.deviceList.values.firstOrNull { NspireCxIiUsb.matches(it) }
+        if (nspire != null) {
+            closeClient()
+            currentDeviceId = null
+            setSearching()
+            if (nspireProbeDeviceId != nspire.deviceId) {
+                nspireProbeDeviceId = nspire.deviceId
+                appendLog(
+                    "TI-NSPIRE CX II PROBE DETECTED " +
+                        "%04X:%04X".format(nspire.vendorId, nspire.productId)
+                )
+                startActivity(Intent(this, UsbProbeActivity::class.java))
+            }
+            return
+        }
+        nspireProbeDeviceId = null
 
         val device = usbManager.deviceList.values.firstOrNull {
             it.vendorId == EvoUsbClient.TI_VID && it.productId == EvoUsbClient.EVO_PID
