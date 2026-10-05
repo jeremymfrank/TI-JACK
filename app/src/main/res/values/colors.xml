@@ -8,4 +8,41 @@
     <color name="green">#69B96B</color>
     <color name="red">#B7655E</color>
     <color name="divider">#40371E</color>
+
+    <color name="blue_bg">#0B111B</color>
+    <color name="blue_panel">#101B2B</color>
+    <color name="blue_selection">#18395F</color>
+    <color name="blue_accent">#58A6FF</color>
+    <color name="blue_dim">#7C96B3</color>
+    <color name="blue_good">#71D38A</color>
+    <color name="blue_danger">#FF7B72</color>
+    <color name="blue_divider">#263B54</color>
+
+    <color name="classic_bg">#07110A</color>
+    <color name="classic_panel">#0B1B10</color>
+    <color name="classic_selection">#14351D</color>
+    <color name="classic_accent">#6FE27B</color>
+    <color name="classic_dim">#6FA676</color>
+    <color name="classic_good">#9AF5A3</color>
+    <color name="classic_danger">#F27B75</color>
+    <color name="classic_divider">#214A29</color>
+
+    <color name="contrast_bg">#000000</color>
+    <color name="contrast_panel">#0A0A0A</color>
+    <color name="contrast_selection">#272000</color>
+    <color name="contrast_accent">#FFD800</color>
+    <color name="contrast_dim">#D7D7D7</color>
+    <color name="contrast_good">#7CFF7C</color>
+    <color name="contrast_danger">#FF7070</color>
+    <color name="contrast_divider">#777777</color>
+
+    <color name="light_bg">#F3F6FA</color>
+    <color name="light_panel">#FFFFFF</color>
+    <color name="light_selection">#DCEBFF</color>
+    <color name="light_accent">#1155A3</color>
+    <color name="light_dim">#596675</color>
+    <color name="light_good">#25763A</color>
+    <color name="light_danger">#A82A2A</color>
+    <color name="light_divider">#C9D3DE</color>
+    <color name="light_on_accent">#FFFFFF</color>
 </resources>
