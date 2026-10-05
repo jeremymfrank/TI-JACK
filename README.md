@@ -6,9 +6,9 @@
 
 **Universal file transfer and compatibility tools for TI calculators.**
 
-TI-JACK is an Android-first project for moving files between a phone and TI calculators, converting compatible legacy files when needed, and verifying what actually reached the calculator. The current transport target is the **TI-84 Evo**.
+TI-JACK is a universal calculator-transfer project with Android as the current shipping host and Windows as the first desktop target. It moves files between a host and TI calculators, converts compatible legacy files when needed, and verifies what actually reached the calculator. The current working transport is the **TI-84 Evo**; **TI-Nspire CX II / CX II CAS** is the next calculator backend.
 
-Current Android version: **v0.21.0**
+Current Android version: **v0.22.0**
 
 ## What works today
 
@@ -26,7 +26,11 @@ It also includes compatibility and maintenance work beyond simple file copying:
 - conservative RAM/Archive free-space estimates from the calculator directory;
 - verified **ARCHIVE** / **RAM** moves for selected variables;
 - **CLEAN GIF** recovery for generated GIF frames left behind by interrupted transfers;
-- archive-space preflight before large JACKVIEW media transfers.
+- archive-space preflight before large JACKVIEW media transfers;
+- a top-right **Settings** gear with version/help/about;
+- persistent Amber, TI Blue, Classic Green, High Contrast, and Light Classroom themes;
+- teacher **Repeat Send**, keep-awake, completion alert, duplicate policies, default-memory preference, calculator sorting, hidden JACKVIEW frame internals, and Simple Classroom UI;
+- **Rename Copy** when receiving duplicate student files to Android.
 
 ## Hardware setup
 
@@ -60,6 +64,34 @@ Requirements:
 
 TI-JACK rereads the calculator directory after write operations and verifies uploaded variables by downloading them back.
 
+
+## Settings and classroom mode
+
+v0.22.0 replaces the old top-right help button with a **Settings gear**. The gear shows the app version and groups settings into Appearance, Classroom, Transfers, Safety, Display, Help, and About.
+
+Available themes:
+
+- **Amber Terminal** — the original TI-JACK look;
+- **TI Blue**;
+- **Classic Green**;
+- **High Contrast**;
+- **Light Classroom**.
+
+Teacher-oriented settings include:
+
+- **Repeat Send** — keep the same Android source files selected after a successful send so a teacher can move directly to the next calculator;
+- **Keep screen awake**;
+- optional transfer-finished vibration or sound + vibration;
+- send duplicate policy: Ask / Replace / Skip;
+- receive duplicate policy: Ask / Replace / Skip / **Rename Copy**;
+- default calculator memory: Auto / Archive / RAM;
+- destructive-action confirmations;
+- calculator sorting by type, name, size, or memory;
+- hide/show generated JACKVIEW GIF frame variables;
+- **Simple Classroom UI**, which hides Archive/RAM/CLEAN GIF maintenance controls while leaving normal transfers available.
+
+Settings are stored locally on the Android device. Resetting settings does not delete calculator files, Android files, or the selected Android folder.
+
 ## Calculator memory management
 
 Each calculator row identifies the variable as `RAM` or `ARC`. The calculator header also shows:
@@ -68,7 +100,7 @@ Each calculator row identifies the variable as `RAM` or `ARC`. The calculator he
 EST FREE · RAM ... · ARC ...
 ```
 
-The Evo directory protocol currently exposes each variable's size and memory location, but TI-JACK has not found an exact protocol field for the calculator's own Memory-screen `RAM FREE` / `ARC FREE` counters. v0.21.0 therefore calculates a **conservative estimate**, using safe working capacities of 560 KiB RAM and 2700 KiB Archive and reserving a small amount per variable for overhead. This is intentionally labeled `EST FREE`; it should not be treated as an exact OS counter.
+The Evo directory protocol currently exposes each variable's size and memory location, but TI-JACK has not found an exact protocol field for the calculator's own Memory-screen `RAM FREE` / `ARC FREE` counters. v0.21.0+ calculates a **conservative estimate**, using safe working capacities of 560 KiB RAM and 2700 KiB Archive and reserving a small amount per variable for overhead. This is intentionally labeled `EST FREE`; it should not be treated as an exact OS counter.
 
 ### Moving variables between RAM and Archive
 
@@ -98,7 +130,7 @@ A JACKVIEW GIF consists of generated frame AppVars plus a `TIJGIF01` manifest. F
 
 New JACKVIEW still images and GIF frame variables are sent directly to **Archive**. Before transmission, TI-JACK calculates the prepared output size and compares it with the conservative Archive estimate.
 
-v0.21.0 also applies a **2.4 MiB prepared-media guard per source image/GIF**. If the media exceeds that guard, or the prepared Archive payload exceeds the estimated remaining Archive space, the transfer is stopped before the first generated variable is sent. Replacing existing archived variables credits their estimated reclaimed space during the preflight calculation.
+v0.21.0+ also applies a **2.4 MiB prepared-media guard per source image/GIF**. If the media exceeds that guard, or the prepared Archive payload exceeds the estimated remaining Archive space, the transfer is stopped before the first generated variable is sent. Replacing existing archived variables credits their estimated reclaimed space during the preflight calculation.
 
 These checks are intentionally conservative. They are meant to prevent the failure mode where a large GIF consumes most of the calculator before the final manifest is reached.
 
@@ -277,6 +309,32 @@ GitHub Actions builds the debug APK from `.github/workflows/build-debug-apk.yml`
 - A GIF longer than 300 frames is intentionally clipped rather than fully preserved.
 - Large media may be reduced in resolution by the converter and is additionally subject to the 2.4 MiB prepared-media guard.
 - `Image1`-`Image7` graph backgrounds are separate from JACKVIEW's IM8C library.
+
+
+## Windows PC and TI-Nspire CX II roadmap
+
+TI-JACK is no longer being scoped as Android/Evo-only.
+
+The first desktop target is **Windows**, with a calculator-backend model shared conceptually across hosts. The Evo remains a variable/RAM/Archive backend, while the **TI-Nspire CX II / CX II CAS** backend is filesystem-oriented and will expose folders, paths, and `.tns` documents.
+
+The CX II implementation plan is:
+
+1. USB enumeration and endpoint probe for TI VID `0451`, CX II PID `E022`;
+2. device/session information;
+3. root-folder listing and navigation;
+4. verified download;
+5. verified upload with byte-for-byte read-back;
+6. mkdir / rename / move / delete;
+7. reconnect and classroom repeat-send testing;
+8. Windows backend parity with Android.
+
+TI-JACK will implement the Nspire transport independently from observed behavior and public protocol information. GPL community implementations may be used as behavioral research, but their implementation code will not be copied into TI-JACK without an explicit licensing decision.
+
+See:
+
+- [Platform roadmap](docs/PLATFORM_ROADMAP.md)
+- [TI-Nspire CX II protocol notes](docs/NSPIRE_CXII_PROTOCOL.md)
+- [Desktop target](desktop/README.md)
 
 ## Project direction
 
