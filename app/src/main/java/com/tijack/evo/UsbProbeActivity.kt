@@ -264,6 +264,7 @@ class UsbProbeActivity : Activity() {
         }
 
         if (evo != null) {
+            if (::nspireCapture.isInitialized) nspireCapture.isEnabled = false
             status.text = "● TI-84 EVO USB FOUND"
             status.setTextColor(0xFF4CAF50.toInt())
             details.text = header + describe(devices)
@@ -283,7 +284,7 @@ class UsbProbeActivity : Activity() {
         if (nspireCxIi != null) {
             status.text = "● TI-NSPIRE CX II USB FOUND · PROBE ONLY"
             status.setTextColor(0xFF4CAF50.toInt())
-            nspireCapture.isEnabled = true
+            if (::nspireCapture.isInitialized) nspireCapture.isEnabled = true
             details.text =
                 header +
                     NspireCxIiUsb.describe(nspireCxIi) +
@@ -294,7 +295,7 @@ class UsbProbeActivity : Activity() {
             return
         }
 
-        nspireCapture.isEnabled = false
+        if (::nspireCapture.isInitialized) nspireCapture.isEnabled = false
         status.text = when {
             !hostFeature -> "● ANDROID REPORTS NO USB HOST SUPPORT"
             devices.isEmpty() -> "● USB HOST CAPABLE · NO PERIPHERALS ENUMERATED"
