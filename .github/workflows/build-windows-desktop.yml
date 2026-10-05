@@ -3,7 +3,7 @@ name: Build Windows Desktop
 on:
   workflow_dispatch:
   push:
-    branches: [ "desktop-windows-v0.1" ]
+    branches: [ "main" ]
     paths:
       - "desktop/windows/**"
       - ".github/workflows/build-windows-desktop.yml"
