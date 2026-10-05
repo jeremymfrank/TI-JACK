@@ -1,12 +1,15 @@
 package com.tijack.evo
 
 import android.app.Activity
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Typeface
+import android.hardware.usb.UsbConstants
+import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.os.BatteryManager
 import android.os.Build
@@ -14,9 +17,11 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import java.io.ByteArrayOutputStream
 import java.io.File
 
 /**
@@ -30,16 +35,20 @@ class UsbProbeActivity : Activity() {
 
     companion object {
         private const val ACTION_USB_STATE = "android.hardware.usb.action.USB_STATE"
+        private const val ACTION_PROBE_USB_PERMISSION =
+            "com.tijack.evo.NSPIRE_PROBE_USB_PERMISSION"
     }
 
     private lateinit var usbManager: UsbManager
     private lateinit var status: TextView
     private lateinit var details: TextView
+    private lateinit var nspireCapture: Button
 
     private val handler = Handler(Looper.getMainLooper())
     private var handedOff = false
     private var lastUsbEvent = "NONE"
     private var lastUsbState = "NO USB_STATE BROADCAST RECEIVED"
+    private var lastNspireCapture = "CX II HANDSHAKE CAPTURE: NOT RUN"
 
     private val usbReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -53,6 +62,21 @@ class UsbProbeActivity : Activity() {
                 ACTION_USB_STATE -> {
                     lastUsbEvent = "USB_STATE"
                     lastUsbState = describeExtras(intent)
+                }
+                ACTION_PROBE_USB_PERMISSION -> {
+                    val device = intent.usbDevice()
+                    val granted = intent.getBooleanExtra(
+                        UsbManager.EXTRA_PERMISSION_GRANTED,
+                        false
+                    )
+                    if (granted && device != null && NspireCxIiUsb.matches(device)) {
+                        lastUsbEvent = "CX II USB ACCESS GRANTED"
+                        captureFirstCxIiPacket(device)
+                    } else {
+                        lastUsbEvent = "CX II USB ACCESS NOT GRANTED"
+                        lastNspireCapture =
+                            "CX II HANDSHAKE CAPTURE: USB permission was not granted."
+                    }
                 }
             }
             refresh()
@@ -76,6 +100,7 @@ class UsbProbeActivity : Activity() {
             addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
             addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
             addAction(ACTION_USB_STATE)
+            addAction(ACTION_PROBE_USB_PERMISSION)
         }
 
         if (Build.VERSION.SDK_INT >= 33) {
@@ -115,6 +140,22 @@ class UsbProbeActivity : Activity() {
             gravity = Gravity.CENTER_HORIZONTAL
         }
         root.addView(status)
+
+        nspireCapture = Button(this).apply {
+            text = "CAPTURE CX II HANDSHAKE · READ ONLY"
+            isEnabled = false
+            setOnClickListener { beginCxIiCapture() }
+        }
+        root.addView(
+            nspireCapture,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(44)
+            ).apply {
+                topMargin = dp(10)
+                bottomMargin = dp(4)
+            }
+        )
 
         root.addView(TextView(this).apply {
             text = "ANDROID USB DIAGNOSTICS"
@@ -242,14 +283,18 @@ class UsbProbeActivity : Activity() {
         if (nspireCxIi != null) {
             status.text = "● TI-NSPIRE CX II USB FOUND · PROBE ONLY"
             status.setTextColor(0xFF4CAF50.toInt())
+            nspireCapture.isEnabled = true
             details.text =
                 header +
                     NspireCxIiUsb.describe(nspireCxIi) +
                     "\nFILE TRANSFER: NOT ENABLED IN THIS PROBE BUILD\n\n" +
+                    lastNspireCapture +
+                    "\n\n" +
                     describe(devices)
             return
         }
 
+        nspireCapture.isEnabled = false
         status.text = when {
             !hostFeature -> "● ANDROID REPORTS NO USB HOST SUPPORT"
             devices.isEmpty() -> "● USB HOST CAPABLE · NO PERIPHERALS ENUMERATED"
@@ -270,6 +315,161 @@ class UsbProbeActivity : Activity() {
                 "\nEXPECTED CALCULATORS\n" +
                 "TI-84 Evo: 0451:E018\n" +
                 "TI-Nspire CX II / CX II CAS: 0451:E022"
+        }
+    }
+
+    private fun beginCxIiCapture() {
+        val device = usbManager.deviceList.values.firstOrNull { NspireCxIiUsb.matches(it) }
+        if (device == null) {
+            lastNspireCapture = "CX II HANDSHAKE CAPTURE: no CX II is currently connected."
+            refresh()
+            return
+        }
+
+        if (usbManager.hasPermission(device)) {
+            captureFirstCxIiPacket(device)
+            return
+        }
+
+        lastNspireCapture = "CX II HANDSHAKE CAPTURE: waiting for Android USB permission..."
+        val permissionIntent = PendingIntent.getBroadcast(
+            this,
+            91,
+            Intent(ACTION_PROBE_USB_PERMISSION).setPackage(packageName),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        usbManager.requestPermission(device, permissionIntent)
+        refresh()
+    }
+
+    private fun captureFirstCxIiPacket(device: UsbDevice) {
+        nspireCapture.isEnabled = false
+        lastNspireCapture = "CX II HANDSHAKE CAPTURE: listening on the bulk IN endpoint..."
+        refresh()
+
+        Thread {
+            val report = captureFirstCxIiPacketBlocking(device)
+            runOnUiThread {
+                lastNspireCapture = report
+                refresh()
+            }
+        }.start()
+    }
+
+    private fun captureFirstCxIiPacketBlocking(device: UsbDevice): String {
+        val connection = usbManager.openDevice(device)
+            ?: return "CX II HANDSHAKE CAPTURE: Android could not open the USB device."
+
+        val intf = (0 until device.interfaceCount)
+            .map { device.getInterface(it) }
+            .firstOrNull { candidate ->
+                (0 until candidate.endpointCount).any { index ->
+                    val ep = candidate.getEndpoint(index)
+                    ep.type == UsbConstants.USB_ENDPOINT_XFER_BULK &&
+                        ep.direction == UsbConstants.USB_DIR_IN
+                }
+            }
+            ?: run {
+                connection.close()
+                return "CX II HANDSHAKE CAPTURE: no bulk IN interface was found."
+            }
+
+        val input = (0 until intf.endpointCount)
+            .map { intf.getEndpoint(it) }
+            .firstOrNull {
+                it.type == UsbConstants.USB_ENDPOINT_XFER_BULK &&
+                    it.direction == UsbConstants.USB_DIR_IN
+            }
+            ?: run {
+                connection.close()
+                return "CX II HANDSHAKE CAPTURE: no bulk IN endpoint was found."
+            }
+
+        if (!connection.claimInterface(intf, true)) {
+            connection.close()
+            return "CX II HANDSHAKE CAPTURE: Android could not claim USB interface ${intf.id}."
+        }
+
+        return try {
+            val accumulated = ByteArrayOutputStream()
+            var declaredLength: Int? = null
+
+            for (attempt in 0 until 12) {
+                val chunk = ByteArray(2048)
+                val timeout = if (accumulated.size() == 0) 2500 else 350
+                val read = connection.bulkTransfer(input, chunk, chunk.size, timeout)
+                if (read <= 0) {
+                    if (accumulated.size() > 0) break
+                    continue
+                }
+
+                accumulated.write(chunk, 0, read)
+                val snapshot = accumulated.toByteArray()
+                if (declaredLength == null && snapshot.size >= NspireCxIiEnvelope.HEADER_SIZE) {
+                    declaredLength =
+                        ((snapshot[6].toInt() and 0xFF) shl 8) or
+                            (snapshot[7].toInt() and 0xFF)
+                }
+
+                val wanted = declaredLength
+                if (wanted != null &&
+                    wanted >= NspireCxIiEnvelope.HEADER_SIZE &&
+                    snapshot.size >= wanted
+                ) {
+                    break
+                }
+            }
+
+            val raw = accumulated.toByteArray()
+            if (raw.isEmpty()) {
+                return "CX II HANDSHAKE CAPTURE: no packet arrived within the read-only capture window. " +
+                    "Unplug/reconnect the calculator and try CAPTURE again."
+            }
+
+            val declared = if (raw.size >= NspireCxIiEnvelope.HEADER_SIZE) {
+                ((raw[6].toInt() and 0xFF) shl 8) or
+                    (raw[7].toInt() and 0xFF)
+            } else {
+                raw.size
+            }
+            val packet = if (declared in NspireCxIiEnvelope.HEADER_SIZE..raw.size) {
+                raw.copyOf(declared)
+            } else {
+                raw
+            }
+
+            val hex = packet.take(96).joinToString(" ") {
+                "%02X".format(it.toInt() and 0xFF)
+            }
+            val decoded = try {
+                val frame = NspireCxIiEnvelope.decode(packet)
+                "service=0x%02X base=0x%02X src=0x%02X dst=0x%02X seq=%d ack=%s payload=%d B"
+                    .format(
+                        frame.service,
+                        frame.baseService,
+                        frame.source,
+                        frame.destination,
+                        frame.sequence,
+                        frame.isAck,
+                        frame.payload.size
+                    )
+            } catch (t: Throwable) {
+                "could not decode complete CX II envelope: ${t.message.orEmpty()}"
+            }
+
+            val prefix = if (packet.size > 96) "(first 96 B) " else ""
+            "CX II HANDSHAKE CAPTURE · READ ONLY\n" +
+                "interface=${intf.id} IN=0x%02X bytes=%d\n".format(
+                    input.address,
+                    packet.size
+                ) +
+                "$decoded\nHEX $prefix$hex"
+        } finally {
+            try {
+                connection.releaseInterface(intf)
+            } catch (_: Throwable) {
+            }
+            connection.close()
         }
     }
 
@@ -363,6 +563,14 @@ class UsbProbeActivity : Activity() {
         }
         return out.toString()
     }
+
+    private fun Intent.usbDevice(): UsbDevice? =
+        if (Build.VERSION.SDK_INT >= 33) {
+            getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            getParcelableExtra(UsbManager.EXTRA_DEVICE)
+        }
 
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
