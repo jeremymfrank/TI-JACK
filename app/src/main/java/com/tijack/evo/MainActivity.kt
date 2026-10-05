@@ -694,6 +694,10 @@ class MainActivity : Activity() {
                     "• ${prefix}xx · ${frames.size} frame${if (frames.size == 1) "" else "s"}"
                 }
                 setReady("FOUND ${orphans.size} ORPHANED GIF FRAME CANDIDATES")
+                if (!TiJackSettings.confirmDestructive(this)) {
+                    startDeleteCalculatorBatch(orphans)
+                    return@runOnUiThread
+                }
                 AlertDialog.Builder(this)
                     .setTitle("Delete orphaned JACKVIEW GIF frames?")
                     .setMessage(
@@ -724,6 +728,10 @@ class MainActivity : Activity() {
             "• ${it.name} [${EvoFileCodec.extensionForType(it.type)}]"
         }
         val count = entries.size
+        if (!TiJackSettings.confirmDestructive(this)) {
+            startDeleteCalculatorBatch(entries)
+            return
+        }
         AlertDialog.Builder(this)
             .setTitle("Delete selected calculator variables?")
             .setMessage(
@@ -806,6 +814,10 @@ class MainActivity : Activity() {
         }
 
         val count = files.size
+        if (!TiJackSettings.confirmDestructive(this)) {
+            startDeleteAndroidBatch(files)
+            return
+        }
         AlertDialog.Builder(this)
             .setTitle("Delete selected Android files?")
             .setMessage(
@@ -913,6 +925,8 @@ class MainActivity : Activity() {
                         val archiveTarget = when {
                             viewerMedia -> true
                             info.type in setOf(4, 5, 18) -> true
+                            TiJackSettings.defaultMemory(this) == "archive" -> true
+                            TiJackSettings.defaultMemory(this) == "ram" -> false
                             else -> null
                         }
                         prepared += PreparedUpload(file, data, info, conflict, archiveTarget)
@@ -933,12 +947,16 @@ class MainActivity : Activity() {
                 }
                 val conflicts = prepared.count { it.conflict }
                 if (conflicts > 0) {
-                    showConflictDialog(
-                        conflicts,
-                        "CALCULATOR",
-                        onReplace = { startUploadBatch(prepared, ConflictPolicy.REPLACE, skipped) },
-                        onSkip = { startUploadBatch(prepared, ConflictPolicy.SKIP, skipped) }
-                    )
+                    when (TiJackSettings.sendConflict(this)) {
+                        "replace" -> startUploadBatch(prepared, ConflictPolicy.REPLACE, skipped)
+                        "skip" -> startUploadBatch(prepared, ConflictPolicy.SKIP, skipped)
+                        else -> showConflictDialog(
+                            conflicts,
+                            "CALCULATOR",
+                            onReplace = { startUploadBatch(prepared, ConflictPolicy.REPLACE, skipped) },
+                            onSkip = { startUploadBatch(prepared, ConflictPolicy.SKIP, skipped) }
+                        )
+                    }
                 } else {
                     startUploadBatch(prepared, ConflictPolicy.SKIP, skipped)
                 }
@@ -1000,11 +1018,14 @@ class MainActivity : Activity() {
 
             runOnUiThread {
                 transferring = false
-                selectedAndroid.clear()
-                selectedAndroid.addAll(failedKeys)
+                if (!TiJackSettings.repeatSend(this) || transferredCount == 0) {
+                    selectedAndroid.clear()
+                    selectedAndroid.addAll(failedKeys)
+                }
                 renderCalculatorEntries(refreshed)
                 renderAndroidFiles()
                 setReady("${batchSummary(transferredCount, skippedCount, failedCount)} · JACKCAT SYNCED")
+                signalTransferFinished()
             }
         }
     }
@@ -1066,12 +1087,12 @@ class MainActivity : Activity() {
             currentFolder.findFile(EvoFileCodec.outputFileName(it)) != null
         }
         if (conflicts > 0) {
-            showConflictDialog(
-                conflicts,
-                "ANDROID",
-                onReplace = { startDownloadBatch(entries, ConflictPolicy.REPLACE) },
-                onSkip = { startDownloadBatch(entries, ConflictPolicy.SKIP) }
-            )
+            when (TiJackSettings.receiveConflict(this)) {
+                "replace" -> startDownloadBatch(entries, ConflictPolicy.REPLACE)
+                "skip" -> startDownloadBatch(entries, ConflictPolicy.SKIP)
+                "rename_copy" -> startDownloadBatch(entries, ConflictPolicy.RENAME_COPY)
+                else -> showReceiveConflictDialog(conflicts, entries)
+            }
         } else {
             startDownloadBatch(entries, ConflictPolicy.SKIP)
         }
@@ -1098,13 +1119,24 @@ class MainActivity : Activity() {
                     skippedCount++
                     continue
                 }
+                val targetName =
+                    if (existing != null && policy == ConflictPolicy.RENAME_COPY) {
+                        uniqueAndroidName(currentFolder, requestedName)
+                    } else {
+                        requestedName
+                    }
                 runOnUiThread {
                     diagnostic.text =
                         "SAVING ${index + 1}/${entries.size} · ${entry.name} → ANDROID"
                 }
                 try {
                     val data = activeClient.downloadVariable(entry)
-                    writeAndroidFile(currentFolder, requestedName, data, existing != null)
+                    writeAndroidFile(
+                        currentFolder,
+                        targetName,
+                        data,
+                        existing != null && policy == ConflictPolicy.REPLACE
+                    )
                     transferredCount++
                 } catch (t: Throwable) {
                     failedCount++
@@ -1120,6 +1152,7 @@ class MainActivity : Activity() {
                 renderAndroidFiles()
                 renderCalculatorEntries(calculatorEntries)
                 setReady(batchSummary(transferredCount, skippedCount, failedCount))
+                signalTransferFinished()
             }
         }
     }
@@ -1225,6 +1258,23 @@ class MainActivity : Activity() {
             .show()
     }
 
+    private fun showReceiveConflictDialog(conflicts: Int, entries: List<EvoEntry>) {
+        AlertDialog.Builder(this)
+            .setTitle("Files already exist on Android")
+            .setMessage(
+                "$conflicts selected variable${if (conflicts == 1) "" else "s"} already " +
+                    "exist in the Android folder."
+            )
+            .setItems(arrayOf("REPLACE", "SKIP EXISTING", "RENAME COPY")) { _, which ->
+                when (which) {
+                    0 -> startDownloadBatch(entries, ConflictPolicy.REPLACE)
+                    1 -> startDownloadBatch(entries, ConflictPolicy.SKIP)
+                    else -> startDownloadBatch(entries, ConflictPolicy.RENAME_COPY)
+                }
+            }
+            .setNegativeButton("CANCEL") { _, _ -> setReady("TRANSFER CANCELLED") }
+            .show()
+    }
     private fun selectedCalculatorEntries(): List<EvoEntry> =
         calculatorEntries.filter { calculatorKey(it) in selectedCalculator }
 
