@@ -25,7 +25,7 @@ jobs:
           gradle-version: "8.11.1"
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4.0.4
 
       - name: Install Android SDK packages
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
