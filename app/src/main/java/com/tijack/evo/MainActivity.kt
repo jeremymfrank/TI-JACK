@@ -15,10 +15,17 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.media.AudioManager
+import android.media.ToneGenerator
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.ImageButton
 import android.widget.TextView
 import androidx.documentfile.provider.DocumentFile
 import java.io.ByteArrayOutputStream
@@ -34,7 +41,7 @@ class MainActivity : Activity() {
         private const val PREF_FOLDER_URI = "folder_uri"
     }
 
-    private enum class ConflictPolicy { REPLACE, SKIP }
+    private enum class ConflictPolicy { REPLACE, SKIP, RENAME_COPY }
 
     private data class PreparedUpload(
         val file: DocumentFile,
@@ -45,6 +52,7 @@ class MainActivity : Activity() {
     )
 
     private lateinit var usbManager: UsbManager
+    private lateinit var settingsButton: ImageButton
     private lateinit var connectionStatus: TextView
     private lateinit var operationStatus: TextView
     private lateinit var diagnostic: TextView
@@ -122,10 +130,12 @@ class MainActivity : Activity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        setTheme(TiJackSettings.themeStyle(this))
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
+        settingsButton = findViewById(R.id.settingsButton)
         connectionStatus = findViewById(R.id.connectionStatus)
         operationStatus = findViewById(R.id.operationStatus)
         diagnostic = findViewById(R.id.diagnostic)
@@ -146,6 +156,7 @@ class MainActivity : Activity() {
         cleanupGifMedia = findViewById(R.id.cleanupGifMedia)
         saveSelected = findViewById(R.id.saveSelected)
 
+        settingsButton.setOnClickListener { TiJackSettings.show(this) }
         chooseFolder.setOnClickListener { chooseAndroidFolder() }
         androidSelectAll.setOnClickListener { selectAllAndroidFiles() }
         androidClearSelection.setOnClickListener { clearAndroidSelection() }
@@ -162,6 +173,7 @@ class MainActivity : Activity() {
         }
 
         loadSavedFolder()
+        applyRuntimeSettings()
         updateActionButtons()
 
         val filter = IntentFilter().apply {
@@ -397,7 +409,7 @@ class MainActivity : Activity() {
                 isFocusable = supported
             }
             val title = TextView(this).apply {
-                setTextColor(getColor(if (supported) R.color.amber else R.color.amber_dim))
+                setTextColor(if (supported) themeColor(R.attr.tiAccent) else themeColor(R.attr.tiDim))
                 textSize = 12f
                 typeface = Typeface.MONOSPACE
                 maxLines = 1
@@ -405,14 +417,14 @@ class MainActivity : Activity() {
             }
             val size = TextView(this).apply {
                 text = formatBytes(file.length())
-                setTextColor(getColor(R.color.amber_dim))
+                setTextColor(themeColor(R.attr.tiDim))
                 textSize = 10f
                 gravity = Gravity.END
                 typeface = Typeface.MONOSPACE
                 layoutParams = LinearLayout.LayoutParams(dp(72), LinearLayout.LayoutParams.WRAP_CONTENT)
             }
             val marker = TextView(this).apply {
-                setTextColor(getColor(R.color.amber))
+                setTextColor(themeColor(R.attr.tiAccent))
                 textSize = 10f
                 gravity = Gravity.END
                 typeface = Typeface.MONOSPACE
@@ -428,7 +440,7 @@ class MainActivity : Activity() {
                     else -> decorated
                 }
                 marker.text = if (selected) "SEL" else ""
-                row.setBackgroundColor(getColor(if (selected) R.color.selection else R.color.panel))
+                row.setBackgroundColor(if (selected) themeColor(R.attr.tiSelection) else themeColor(R.attr.tiPanel))
             }
 
             if (supported) {
@@ -451,16 +463,27 @@ class MainActivity : Activity() {
     private fun renderCalculatorEntries(entries: List<EvoEntry>) {
         calculatorList.removeAllViews()
         renderCalculatorMemory(entries)
-        val validKeys = entries.mapTo(HashSet()) { calculatorKey(it) }
+        val visibleEntries = visibleCalculatorEntries(entries)
+        val validKeys = visibleEntries.mapTo(HashSet()) { calculatorKey(it) }
         selectedCalculator.retainAll(validKeys)
 
-        if (entries.isEmpty()) {
-            calculatorList.addView(textCell("(NO VARIABLES)", 11f, R.color.amber_dim))
+        val hiddenCount = entries.size - visibleEntries.size
+        if (hiddenCount > 0) {
+            calculatorList.addView(
+                textCell("($hiddenCount JACKVIEW FRAME VARIABLES HIDDEN)", 9f, R.color.amber_dim)
+            )
+            calculatorList.addView(divider())
+        }
+
+        if (visibleEntries.isEmpty()) {
+            if (hiddenCount == 0) {
+                calculatorList.addView(textCell("(NO VARIABLES)", 11f, R.color.amber_dim))
+            }
             updateActionButtons()
             return
         }
 
-        for (entry in entries) {
+        for (entry in visibleEntries) {
             val key = calculatorKey(entry)
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -470,7 +493,7 @@ class MainActivity : Activity() {
                 isFocusable = true
             }
             val name = TextView(this).apply {
-                setTextColor(getColor(R.color.amber))
+                setTextColor(themeColor(R.attr.tiAccent))
                 textSize = 12f
                 typeface = Typeface.MONOSPACE
                 maxLines = 1
@@ -478,7 +501,7 @@ class MainActivity : Activity() {
             }
             val size = TextView(this).apply {
                 text = formatBytes(entry.size)
-                setTextColor(getColor(R.color.amber))
+                setTextColor(themeColor(R.attr.tiAccent))
                 textSize = 10f
                 gravity = Gravity.END
                 typeface = Typeface.MONOSPACE
@@ -486,7 +509,7 @@ class MainActivity : Activity() {
             }
             val memory = TextView(this).apply {
                 text = if (entry.archived) "ARC" else "RAM"
-                setTextColor(getColor(R.color.amber_dim))
+                setTextColor(themeColor(R.attr.tiDim))
                 textSize = 9f
                 gravity = Gravity.END
                 typeface = Typeface.MONOSPACE
@@ -497,7 +520,7 @@ class MainActivity : Activity() {
                 val selected = key in selectedCalculator
                 name.text =
                     "${if (selected) "✓ " else ""}${entry.name}  [${EvoFileCodec.extensionForType(entry.type)}]"
-                row.setBackgroundColor(getColor(if (selected) R.color.selection else R.color.panel))
+                row.setBackgroundColor(if (selected) themeColor(R.attr.tiSelection) else themeColor(R.attr.tiPanel))
             }
             row.setOnClickListener {
                 if (!selectedCalculator.add(key)) selectedCalculator.remove(key)
@@ -551,7 +574,9 @@ class MainActivity : Activity() {
     private fun selectAllCalculatorEntries() {
         if (connecting || transferring || client == null) return
         selectedCalculator.clear()
-        calculatorEntries.forEach { selectedCalculator += calculatorKey(it) }
+        visibleCalculatorEntries(calculatorEntries).forEach {
+            selectedCalculator += calculatorKey(it)
+        }
         renderCalculatorEntries(calculatorEntries)
     }
 
@@ -669,6 +694,10 @@ class MainActivity : Activity() {
                     "• ${prefix}xx · ${frames.size} frame${if (frames.size == 1) "" else "s"}"
                 }
                 setReady("FOUND ${orphans.size} ORPHANED GIF FRAME CANDIDATES")
+                if (!TiJackSettings.confirmDestructive(this)) {
+                    startDeleteCalculatorBatch(orphans)
+                    return@runOnUiThread
+                }
                 AlertDialog.Builder(this)
                     .setTitle("Delete orphaned JACKVIEW GIF frames?")
                     .setMessage(
@@ -699,6 +728,10 @@ class MainActivity : Activity() {
             "• ${it.name} [${EvoFileCodec.extensionForType(it.type)}]"
         }
         val count = entries.size
+        if (!TiJackSettings.confirmDestructive(this)) {
+            startDeleteCalculatorBatch(entries)
+            return
+        }
         AlertDialog.Builder(this)
             .setTitle("Delete selected calculator variables?")
             .setMessage(
@@ -781,6 +814,10 @@ class MainActivity : Activity() {
         }
 
         val count = files.size
+        if (!TiJackSettings.confirmDestructive(this)) {
+            startDeleteAndroidBatch(files)
+            return
+        }
         AlertDialog.Builder(this)
             .setTitle("Delete selected Android files?")
             .setMessage(
@@ -888,6 +925,8 @@ class MainActivity : Activity() {
                         val archiveTarget = when {
                             viewerMedia -> true
                             info.type in setOf(4, 5, 18) -> true
+                            TiJackSettings.defaultMemory(this) == "archive" -> true
+                            TiJackSettings.defaultMemory(this) == "ram" -> false
                             else -> null
                         }
                         prepared += PreparedUpload(file, data, info, conflict, archiveTarget)
@@ -908,12 +947,16 @@ class MainActivity : Activity() {
                 }
                 val conflicts = prepared.count { it.conflict }
                 if (conflicts > 0) {
-                    showConflictDialog(
-                        conflicts,
-                        "CALCULATOR",
-                        onReplace = { startUploadBatch(prepared, ConflictPolicy.REPLACE, skipped) },
-                        onSkip = { startUploadBatch(prepared, ConflictPolicy.SKIP, skipped) }
-                    )
+                    when (TiJackSettings.sendConflict(this)) {
+                        "replace" -> startUploadBatch(prepared, ConflictPolicy.REPLACE, skipped)
+                        "skip" -> startUploadBatch(prepared, ConflictPolicy.SKIP, skipped)
+                        else -> showConflictDialog(
+                            conflicts,
+                            "CALCULATOR",
+                            onReplace = { startUploadBatch(prepared, ConflictPolicy.REPLACE, skipped) },
+                            onSkip = { startUploadBatch(prepared, ConflictPolicy.SKIP, skipped) }
+                        )
+                    }
                 } else {
                     startUploadBatch(prepared, ConflictPolicy.SKIP, skipped)
                 }
@@ -975,11 +1018,14 @@ class MainActivity : Activity() {
 
             runOnUiThread {
                 transferring = false
-                selectedAndroid.clear()
-                selectedAndroid.addAll(failedKeys)
+                if (!TiJackSettings.repeatSend(this) || transferredCount == 0) {
+                    selectedAndroid.clear()
+                    selectedAndroid.addAll(failedKeys)
+                }
                 renderCalculatorEntries(refreshed)
                 renderAndroidFiles()
                 setReady("${batchSummary(transferredCount, skippedCount, failedCount)} · JACKCAT SYNCED")
+                signalTransferFinished()
             }
         }
     }
@@ -1041,12 +1087,12 @@ class MainActivity : Activity() {
             currentFolder.findFile(EvoFileCodec.outputFileName(it)) != null
         }
         if (conflicts > 0) {
-            showConflictDialog(
-                conflicts,
-                "ANDROID",
-                onReplace = { startDownloadBatch(entries, ConflictPolicy.REPLACE) },
-                onSkip = { startDownloadBatch(entries, ConflictPolicy.SKIP) }
-            )
+            when (TiJackSettings.receiveConflict(this)) {
+                "replace" -> startDownloadBatch(entries, ConflictPolicy.REPLACE)
+                "skip" -> startDownloadBatch(entries, ConflictPolicy.SKIP)
+                "rename_copy" -> startDownloadBatch(entries, ConflictPolicy.RENAME_COPY)
+                else -> showReceiveConflictDialog(conflicts, entries)
+            }
         } else {
             startDownloadBatch(entries, ConflictPolicy.SKIP)
         }
@@ -1073,13 +1119,24 @@ class MainActivity : Activity() {
                     skippedCount++
                     continue
                 }
+                val targetName =
+                    if (existing != null && policy == ConflictPolicy.RENAME_COPY) {
+                        uniqueAndroidName(currentFolder, requestedName)
+                    } else {
+                        requestedName
+                    }
                 runOnUiThread {
                     diagnostic.text =
                         "SAVING ${index + 1}/${entries.size} · ${entry.name} → ANDROID"
                 }
                 try {
                     val data = activeClient.downloadVariable(entry)
-                    writeAndroidFile(currentFolder, requestedName, data, existing != null)
+                    writeAndroidFile(
+                        currentFolder,
+                        targetName,
+                        data,
+                        existing != null && policy == ConflictPolicy.REPLACE
+                    )
                     transferredCount++
                 } catch (t: Throwable) {
                     failedCount++
@@ -1095,6 +1152,7 @@ class MainActivity : Activity() {
                 renderAndroidFiles()
                 renderCalculatorEntries(calculatorEntries)
                 setReady(batchSummary(transferredCount, skippedCount, failedCount))
+                signalTransferFinished()
             }
         }
     }
@@ -1200,6 +1258,23 @@ class MainActivity : Activity() {
             .show()
     }
 
+    private fun showReceiveConflictDialog(conflicts: Int, entries: List<EvoEntry>) {
+        AlertDialog.Builder(this)
+            .setTitle("Files already exist on Android")
+            .setMessage(
+                "$conflicts selected variable${if (conflicts == 1) "" else "s"} already " +
+                    "exist in the Android folder."
+            )
+            .setItems(arrayOf("REPLACE", "SKIP EXISTING", "RENAME COPY")) { _, which ->
+                when (which) {
+                    0 -> startDownloadBatch(entries, ConflictPolicy.REPLACE)
+                    1 -> startDownloadBatch(entries, ConflictPolicy.SKIP)
+                    else -> startDownloadBatch(entries, ConflictPolicy.RENAME_COPY)
+                }
+            }
+            .setNegativeButton("CANCEL") { _, _ -> setReady("TRANSFER CANCELLED") }
+            .show()
+    }
     private fun selectedCalculatorEntries(): List<EvoEntry> =
         calculatorEntries.filter { calculatorKey(it) in selectedCalculator }
 
@@ -1250,9 +1325,10 @@ class MainActivity : Activity() {
         sendSelected.isEnabled =
             enabled && selectedAndroid.isNotEmpty() && client != null
 
+        val visibleCalculatorCount = visibleCalculatorEntries(calculatorEntries).size
         calculatorSelectAll.isEnabled =
-            enabled && client != null && calculatorEntries.isNotEmpty() &&
-                selectedCalculator.size < calculatorEntries.size
+            enabled && client != null && visibleCalculatorCount > 0 &&
+                selectedCalculator.size < visibleCalculatorCount
         calculatorClearSelection.isEnabled = enabled && selectedCalculator.isNotEmpty()
         deleteCalculatorSelected.isEnabled =
             enabled && selectedCalculator.isNotEmpty() && client != null
@@ -1274,7 +1350,18 @@ class MainActivity : Activity() {
         "$done TRANSFERRED · $skipped SKIPPED · $failed FAILED"
 
     private fun sortedEntries(entries: List<EvoEntry>): List<EvoEntry> =
-        entries.sortedWith(compareBy<EvoEntry> { it.type }.thenBy { it.name.lowercase() })
+        when (TiJackSettings.calculatorSort(this)) {
+            "name" -> entries.sortedBy { it.name.lowercase() }
+            "size" -> entries.sortedWith(
+                compareByDescending<EvoEntry> { it.size }.thenBy { it.name.lowercase() }
+            )
+            "memory" -> entries.sortedWith(
+                compareBy<EvoEntry> { it.archived }.thenBy { it.name.lowercase() }
+            )
+            else -> entries.sortedWith(
+                compareBy<EvoEntry> { it.type }.thenBy { it.name.lowercase() }
+            )
+        }
 
     private fun syncJackViewCatalog(
         activeClient: EvoUsbClient,
@@ -1353,9 +1440,9 @@ class MainActivity : Activity() {
         calculatorEntries = emptyList()
         selectedCalculator.clear()
         connectionStatus.text = "● NO CALCULATOR CONNECTED"
-        connectionStatus.setTextColor(getColor(R.color.amber))
+        connectionStatus.setTextColor(themeColor(R.attr.tiAccent))
         operationStatus.text = "SEARCHING..."
-        operationStatus.setTextColor(getColor(R.color.amber))
+        operationStatus.setTextColor(themeColor(R.attr.tiAccent))
         diagnostic.text = "Connect with the OTG/host adapter if Android does not enumerate the Evo."
         calculatorList.removeAllViews()
         if (::calculatorMemoryStatus.isInitialized) {
@@ -1366,34 +1453,34 @@ class MainActivity : Activity() {
 
     private fun setConnecting(detail: String) {
         connectionStatus.text = "● TI-84 EVO DETECTED"
-        connectionStatus.setTextColor(getColor(R.color.amber))
+        connectionStatus.setTextColor(themeColor(R.attr.tiAccent))
         operationStatus.text = "CONNECTING..."
-        operationStatus.setTextColor(getColor(R.color.amber))
+        operationStatus.setTextColor(themeColor(R.attr.tiAccent))
         diagnostic.text = detail
         updateActionButtons()
     }
 
     private fun setTransferStatus(detail: String) {
         connectionStatus.text = "● TI-84 EVO CONNECTED"
-        connectionStatus.setTextColor(getColor(R.color.green))
+        connectionStatus.setTextColor(themeColor(R.attr.tiGood))
         operationStatus.text = "TRANSFERRING..."
-        operationStatus.setTextColor(getColor(R.color.amber))
+        operationStatus.setTextColor(themeColor(R.attr.tiAccent))
         diagnostic.text = detail.take(180)
         updateActionButtons()
     }
 
     private fun setReady(detail: String) {
         connectionStatus.text = "● TI-84 EVO CONNECTED"
-        connectionStatus.setTextColor(getColor(R.color.green))
+        connectionStatus.setTextColor(themeColor(R.attr.tiGood))
         operationStatus.text = "READY"
-        operationStatus.setTextColor(getColor(R.color.green))
+        operationStatus.setTextColor(themeColor(R.attr.tiGood))
         diagnostic.text = detail.take(180)
         updateActionButtons()
     }
 
     private fun setLocalBusy(detail: String) {
         operationStatus.text = "DELETING..."
-        operationStatus.setTextColor(getColor(R.color.amber))
+        operationStatus.setTextColor(themeColor(R.attr.tiAccent))
         diagnostic.text = detail.take(180)
         updateActionButtons()
     }
@@ -1401,7 +1488,7 @@ class MainActivity : Activity() {
     private fun setLocalReady(detail: String) {
         operationStatus.text = "READY"
         operationStatus.setTextColor(
-            getColor(if (client != null) R.color.green else R.color.amber)
+            if (client != null) themeColor(R.attr.tiGood) else themeColor(R.attr.tiAccent)
         )
         diagnostic.text = detail.take(180)
         updateActionButtons()
@@ -1409,18 +1496,18 @@ class MainActivity : Activity() {
 
     private fun setTransferError(detail: String) {
         connectionStatus.text = "● TI-84 EVO CONNECTED"
-        connectionStatus.setTextColor(getColor(R.color.green))
+        connectionStatus.setTextColor(themeColor(R.attr.tiGood))
         operationStatus.text = "TRANSFER FAILED"
-        operationStatus.setTextColor(getColor(R.color.red))
+        operationStatus.setTextColor(themeColor(R.attr.tiDanger))
         diagnostic.text = detail.take(180)
         updateActionButtons()
     }
 
     private fun showConnectionError(title: String, detail: String) {
         connectionStatus.text = "● $title"
-        connectionStatus.setTextColor(getColor(R.color.red))
+        connectionStatus.setTextColor(themeColor(R.attr.tiDanger))
         operationStatus.text = "CONNECTING..."
-        operationStatus.setTextColor(getColor(R.color.amber))
+        operationStatus.setTextColor(themeColor(R.attr.tiAccent))
         diagnostic.text = detail.take(180)
         updateActionButtons()
     }
@@ -1452,7 +1539,7 @@ class MainActivity : Activity() {
         }
 
     private fun divider(): View = View(this).apply {
-        setBackgroundColor(getColor(R.color.divider))
+        setBackgroundColor(themeColor(R.attr.tiDivider))
         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
     }
 
@@ -1460,11 +1547,87 @@ class MainActivity : Activity() {
         TextView(this).apply {
             text = value
             textSize = size
-            setTextColor(getColor(color))
+            setTextColor(themeColorForLegacyRes(color))
             setPadding(dp(4), dp(10), dp(4), dp(10))
             typeface = Typeface.MONOSPACE
         }
 
+    private fun visibleCalculatorEntries(entries: List<EvoEntry>): List<EvoEntry> =
+        if (TiJackSettings.showGeneratedFrames(this)) {
+            entries
+        } else {
+            entries.filterNot {
+                it.type == 8 && EvoMemoryManager.isGeneratedGifFrameName(it.name)
+            }
+        }
+
+    private fun applyRuntimeSettings() {
+        val simple = TiJackSettings.simpleClassroom(this)
+        val visibility = if (simple) View.GONE else View.VISIBLE
+        archiveCalculatorSelected.visibility = visibility
+        unarchiveCalculatorSelected.visibility = visibility
+        cleanupGifMedia.visibility = visibility
+
+        if (TiJackSettings.keepAwake(this)) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
+    private fun signalTransferFinished() {
+        when (TiJackSettings.completionAlert(this)) {
+            "vibrate" -> vibrateCompletion()
+            "sound" -> {
+                vibrateCompletion()
+                val tone = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 70)
+                tone.startTone(ToneGenerator.TONE_PROP_ACK, 140)
+                handler.postDelayed({ tone.release() }, 250)
+            }
+        }
+    }
+
+    private fun vibrateCompletion() {
+        try {
+            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator ?: return
+            vibrator.vibrate(
+                VibrationEffect.createOneShot(60, VibrationEffect.DEFAULT_AMPLITUDE)
+            )
+        } catch (_: Throwable) {
+        }
+    }
+
+    private fun uniqueAndroidName(directory: DocumentFile, requestedName: String): String {
+        if (directory.findFile(requestedName) == null) return requestedName
+        val dot = requestedName.lastIndexOf('.')
+        val base = if (dot > 0) requestedName.substring(0, dot) else requestedName
+        val extension = if (dot > 0) requestedName.substring(dot) else ""
+        for (index in 2..999) {
+            val candidate = "$base ($index)$extension"
+            if (directory.findFile(candidate) == null) return candidate
+        }
+        error("could not choose a unique Android filename for $requestedName")
+    }
+
+    private fun themeColor(attr: Int): Int {
+        val value = TypedValue()
+        require(theme.resolveAttribute(attr, value, true)) {
+            "TI-JACK theme is missing color attribute $attr"
+        }
+        return if (value.resourceId != 0) getColor(value.resourceId) else value.data
+    }
+
+    private fun themeColorForLegacyRes(resId: Int): Int = when (resId) {
+        R.color.bg -> themeColor(R.attr.tiBg)
+        R.color.panel -> themeColor(R.attr.tiPanel)
+        R.color.selection -> themeColor(R.attr.tiSelection)
+        R.color.amber -> themeColor(R.attr.tiAccent)
+        R.color.amber_dim -> themeColor(R.attr.tiDim)
+        R.color.green -> themeColor(R.attr.tiGood)
+        R.color.red -> themeColor(R.attr.tiDanger)
+        R.color.divider -> themeColor(R.attr.tiDivider)
+        else -> getColor(resId)
+    }
     private fun formatBytes(value: Long): String = when {
         value < 1024 -> "$value B"
         value < 1024 * 1024 -> "%.1f KB".format(value / 1024.0)

@@ -1,12 +1,95 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.TIJack" parent="android:style/Theme.Material.NoActionBar">
+    <style name="Theme.TIJack.Base" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">monospace</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+
+    <style name="Theme.TIJack" parent="@style/Theme.TIJack.Amber" />
+
+    <style name="Theme.TIJack.Amber" parent="@style/Theme.TIJack.Base">
+        <item name="tiBg">@color/bg</item>
+        <item name="tiPanel">@color/panel</item>
+        <item name="tiSelection">@color/selection</item>
+        <item name="tiAccent">@color/amber</item>
+        <item name="tiDim">@color/amber_dim</item>
+        <item name="tiGood">@color/green</item>
+        <item name="tiDanger">@color/red</item>
+        <item name="tiDivider">@color/divider</item>
+        <item name="tiOnAccent">@color/bg</item>
         <item name="android:windowBackground">@color/bg</item>
         <item name="android:colorAccent">@color/amber</item>
         <item name="android:statusBarColor">@color/bg</item>
         <item name="android:navigationBarColor">@color/bg</item>
-        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="Theme.TIJack.Blue" parent="@style/Theme.TIJack.Base">
+        <item name="tiBg">@color/blue_bg</item>
+        <item name="tiPanel">@color/blue_panel</item>
+        <item name="tiSelection">@color/blue_selection</item>
+        <item name="tiAccent">@color/blue_accent</item>
+        <item name="tiDim">@color/blue_dim</item>
+        <item name="tiGood">@color/blue_good</item>
+        <item name="tiDanger">@color/blue_danger</item>
+        <item name="tiDivider">@color/blue_divider</item>
+        <item name="tiOnAccent">@color/blue_bg</item>
+        <item name="android:windowBackground">@color/blue_bg</item>
+        <item name="android:colorAccent">@color/blue_accent</item>
+        <item name="android:statusBarColor">@color/blue_bg</item>
+        <item name="android:navigationBarColor">@color/blue_bg</item>
+    </style>
+
+    <style name="Theme.TIJack.Green" parent="@style/Theme.TIJack.Base">
+        <item name="tiBg">@color/classic_bg</item>
+        <item name="tiPanel">@color/classic_panel</item>
+        <item name="tiSelection">@color/classic_selection</item>
+        <item name="tiAccent">@color/classic_accent</item>
+        <item name="tiDim">@color/classic_dim</item>
+        <item name="tiGood">@color/classic_good</item>
+        <item name="tiDanger">@color/classic_danger</item>
+        <item name="tiDivider">@color/classic_divider</item>
+        <item name="tiOnAccent">@color/classic_bg</item>
+        <item name="android:windowBackground">@color/classic_bg</item>
+        <item name="android:colorAccent">@color/classic_accent</item>
+        <item name="android:statusBarColor">@color/classic_bg</item>
+        <item name="android:navigationBarColor">@color/classic_bg</item>
+    </style>
+
+    <style name="Theme.TIJack.HighContrast" parent="@style/Theme.TIJack.Base">
+        <item name="tiBg">@color/contrast_bg</item>
+        <item name="tiPanel">@color/contrast_panel</item>
+        <item name="tiSelection">@color/contrast_selection</item>
+        <item name="tiAccent">@color/contrast_accent</item>
+        <item name="tiDim">@color/contrast_dim</item>
+        <item name="tiGood">@color/contrast_good</item>
+        <item name="tiDanger">@color/contrast_danger</item>
+        <item name="tiDivider">@color/contrast_divider</item>
+        <item name="tiOnAccent">@color/contrast_bg</item>
+        <item name="android:windowBackground">@color/contrast_bg</item>
+        <item name="android:colorAccent">@color/contrast_accent</item>
+        <item name="android:statusBarColor">@color/contrast_bg</item>
+        <item name="android:navigationBarColor">@color/contrast_bg</item>
+    </style>
+
+    <style name="Theme.TIJack.Light" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">monospace</item>
         <item name="android:windowActionModeOverlay">true</item>
+        <item name="tiBg">@color/light_bg</item>
+        <item name="tiPanel">@color/light_panel</item>
+        <item name="tiSelection">@color/light_selection</item>
+        <item name="tiAccent">@color/light_accent</item>
+        <item name="tiDim">@color/light_dim</item>
+        <item name="tiGood">@color/light_good</item>
+        <item name="tiDanger">@color/light_danger</item>
+        <item name="tiDivider">@color/light_divider</item>
+        <item name="tiOnAccent">@color/light_on_accent</item>
+        <item name="android:windowBackground">@color/light_bg</item>
+        <item name="android:colorAccent">@color/light_accent</item>
+        <item name="android:statusBarColor">@color/light_bg</item>
+        <item name="android:navigationBarColor">@color/light_bg</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
     </style>
 </resources>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <attr name="tiBg" format="color" />
+    <attr name="tiPanel" format="color" />
+    <attr name="tiSelection" format="color" />
+    <attr name="tiAccent" format="color" />
+    <attr name="tiDim" format="color" />
+    <attr name="tiGood" format="color" />
+    <attr name="tiDanger" format="color" />
+    <attr name="tiDivider" format="color" />
+    <attr name="tiOnAccent" format="color" />
+</resources>

@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/bg"
+    android:background="?attr/tiBg"
     android:paddingStart="14dp"
     android:paddingEnd="14dp"
     android:paddingTop="12dp"
@@ -19,21 +19,20 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="TI-JACK"
-            android:textColor="@color/amber"
+            android:textColor="?attr/tiAccent"
             android:textSize="28sp"
             android:textStyle="bold"
             android:gravity="center" />
 
-        <com.tijack.evo.HelpButton
+        <ImageButton
+            android:id="@+id/settingsButton"
             android:layout_width="32dp"
             android:layout_height="32dp"
             android:layout_gravity="end|center_vertical"
-            android:text="?"
-            android:contentDescription="Help and about"
-            android:textColor="@color/amber"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:gravity="center"
+            android:src="@drawable/ic_settings"
+            android:tint="?attr/tiAccent"
+            android:contentDescription="TI-JACK settings and help"
+            android:padding="5dp"
             android:background="?android:attr/selectableItemBackgroundBorderless" />
     </FrameLayout>
 
@@ -42,7 +41,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="● SEARCHING..."
-        android:textColor="@color/amber"
+        android:textColor="?attr/tiAccent"
         android:textSize="16sp"
         android:textStyle="bold"
         android:gravity="center" />
@@ -52,7 +51,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="SEARCHING..."
-        android:textColor="@color/amber"
+        android:textColor="?attr/tiAccent"
         android:textSize="13sp"
         android:gravity="center"
         android:layout_marginTop="2dp" />
@@ -62,7 +61,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text=""
-        android:textColor="@color/amber_dim"
+        android:textColor="?attr/tiDim"
         android:textSize="9sp"
         android:gravity="center"
         android:maxLines="3"
@@ -72,7 +71,7 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="@color/divider" />
+        android:background="?attr/tiDivider" />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -92,7 +91,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="ANDROID"
-                android:textColor="@color/amber"
+                android:textColor="?attr/tiAccent"
                 android:textStyle="bold"
                 android:textSize="14sp" />
 
@@ -101,7 +100,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="NO FOLDER SELECTED"
-                android:textColor="@color/amber_dim"
+                android:textColor="?attr/tiDim"
                 android:textSize="9sp"
                 android:maxLines="1"
                 android:ellipsize="middle" />
@@ -113,8 +112,8 @@
             android:layout_height="36dp"
             android:text="CHOOSE FOLDER"
             android:textSize="9sp"
-            android:textColor="@color/bg"
-            android:backgroundTint="@color/amber"
+            android:textColor="?attr/tiOnAccent"
+            android:backgroundTint="?attr/tiAccent"
             android:minHeight="0dp"
             android:minWidth="0dp"
             android:paddingStart="8dp"
@@ -126,7 +125,7 @@
         android:layout_height="0dp"
         android:layout_weight="0.40"
         android:fillViewport="true"
-        android:background="@color/panel">
+        android:background="?attr/tiPanel">
 
         <LinearLayout
             android:id="@+id/computerList"
@@ -153,8 +152,8 @@
             android:text="SELECT ALL"
             android:textSize="9sp"
             android:textStyle="bold"
-            android:textColor="@color/bg"
-            android:backgroundTint="@color/amber"
+            android:textColor="?attr/tiOnAccent"
+            android:backgroundTint="?attr/tiAccent"
             android:minHeight="0dp"
             android:minWidth="0dp" />
 
@@ -167,8 +166,8 @@
             android:text="CLEAR"
             android:textSize="9sp"
             android:textStyle="bold"
-            android:textColor="@color/bg"
-            android:backgroundTint="@color/amber"
+            android:textColor="?attr/tiOnAccent"
+            android:backgroundTint="?attr/tiAccent"
             android:minHeight="0dp"
             android:minWidth="0dp" />
 
@@ -181,8 +180,8 @@
             android:text="DELETE"
             android:textSize="9sp"
             android:textStyle="bold"
-            android:textColor="@color/bg"
-            android:backgroundTint="@color/red"
+            android:textColor="?attr/tiOnAccent"
+            android:backgroundTint="?attr/tiDanger"
             android:minHeight="0dp"
             android:minWidth="0dp" />
     </LinearLayout>
@@ -194,8 +193,8 @@
         android:text="TRANSMIT SELECTED →"
         android:textSize="10sp"
         android:textStyle="bold"
-        android:textColor="@color/bg"
-        android:backgroundTint="@color/amber"
+        android:textColor="?attr/tiOnAccent"
+        android:backgroundTint="?attr/tiAccent"
         android:minHeight="0dp"
         android:layout_marginTop="4dp"
         android:layout_marginBottom="4dp" />
@@ -203,7 +202,7 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="@color/divider" />
+        android:background="?attr/tiDivider" />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -223,7 +222,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="CALCULATOR"
-                android:textColor="@color/amber"
+                android:textColor="?attr/tiAccent"
                 android:textStyle="bold"
                 android:textSize="14sp" />
 
@@ -232,7 +231,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="EST FREE · RAM -- · ARC --"
-                android:textColor="@color/amber_dim"
+                android:textColor="?attr/tiDim"
                 android:textSize="9sp"
                 android:maxLines="1" />
         </LinearLayout>
@@ -241,7 +240,7 @@
             android:layout_width="76dp"
             android:layout_height="wrap_content"
             android:text="SIZE"
-            android:textColor="@color/amber"
+            android:textColor="?attr/tiAccent"
             android:textStyle="bold"
             android:textSize="10sp"
             android:gravity="end" />
@@ -250,7 +249,7 @@
             android:layout_width="43dp"
             android:layout_height="wrap_content"
             android:text="MEM"
-            android:textColor="@color/amber"
+            android:textColor="?attr/tiAccent"
             android:textStyle="bold"
             android:textSize="10sp"
             android:gravity="end" />
@@ -261,7 +260,7 @@
         android:layout_height="0dp"
         android:layout_weight="0.60"
         android:fillViewport="true"
-        android:background="@color/panel">
+        android:background="?attr/tiPanel">
 
         <LinearLayout
             android:id="@+id/calculatorList"
@@ -288,8 +287,8 @@
             android:text="SELECT ALL"
             android:textSize="9sp"
             android:textStyle="bold"
-            android:textColor="@color/bg"
-            android:backgroundTint="@color/amber"
+            android:textColor="?attr/tiOnAccent"
+            android:backgroundTint="?attr/tiAccent"
             android:minHeight="0dp"
             android:minWidth="0dp" />
 
@@ -302,8 +301,8 @@
             android:text="CLEAR"
             android:textSize="9sp"
             android:textStyle="bold"
-            android:textColor="@color/bg"
-            android:backgroundTint="@color/amber"
+            android:textColor="?attr/tiOnAccent"
+            android:backgroundTint="?attr/tiAccent"
             android:minHeight="0dp"
             android:minWidth="0dp" />
 
@@ -316,8 +315,8 @@
             android:text="DELETE"
             android:textSize="9sp"
             android:textStyle="bold"
-            android:textColor="@color/bg"
-            android:backgroundTint="@color/red"
+            android:textColor="?attr/tiOnAccent"
+            android:backgroundTint="?attr/tiDanger"
             android:minHeight="0dp"
             android:minWidth="0dp" />
     </LinearLayout>
@@ -336,8 +335,8 @@
             android:text="ARCHIVE"
             android:textSize="9sp"
             android:textStyle="bold"
-            android:textColor="@color/bg"
-            android:backgroundTint="@color/amber"
+            android:textColor="?attr/tiOnAccent"
+            android:backgroundTint="?attr/tiAccent"
             android:minHeight="0dp"
             android:minWidth="0dp" />
 
@@ -350,8 +349,8 @@
             android:text="RAM"
             android:textSize="9sp"
             android:textStyle="bold"
-            android:textColor="@color/bg"
-            android:backgroundTint="@color/amber"
+            android:textColor="?attr/tiOnAccent"
+            android:backgroundTint="?attr/tiAccent"
             android:minHeight="0dp"
             android:minWidth="0dp" />
 
@@ -364,8 +363,8 @@
             android:text="CLEAN GIF"
             android:textSize="9sp"
             android:textStyle="bold"
-            android:textColor="@color/bg"
-            android:backgroundTint="@color/amber"
+            android:textColor="?attr/tiOnAccent"
+            android:backgroundTint="?attr/tiAccent"
             android:minHeight="0dp"
             android:minWidth="0dp" />
     </LinearLayout>
@@ -377,8 +376,8 @@
         android:text="← TRANSMIT SELECTED"
         android:textSize="10sp"
         android:textStyle="bold"
-        android:textColor="@color/bg"
-        android:backgroundTint="@color/amber"
+        android:textColor="?attr/tiOnAccent"
+        android:backgroundTint="?attr/tiAccent"
         android:minHeight="0dp"
         android:layout_marginTop="4dp" />
 
@@ -386,7 +385,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="SCHOOL PROPERTY"
-        android:textColor="@color/amber_dim"
+        android:textColor="?attr/tiDim"
         android:textSize="9sp"
         android:textStyle="bold"
         android:gravity="center"
