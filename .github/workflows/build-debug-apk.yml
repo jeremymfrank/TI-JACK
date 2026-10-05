@@ -3,7 +3,7 @@ name: Build Android Evo Test APK
 on:
   workflow_dispatch:
   push:
-    branches: [ "main", "v0.20.1-viewer-fit" ]
+    branches: [ "main", "v0.22.0-settings-platform" ]
 
 jobs:
   build:
