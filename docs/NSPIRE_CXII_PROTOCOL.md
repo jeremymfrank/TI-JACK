@@ -77,3 +77,21 @@ For rename/move:
 Use a user-space USB backend suitable for Windows and keep packet/session logic independent of the GUI. libusb is a viable cross-platform host library, but Windows driver installation and coexistence with TI software must be tested before choosing the final packaging strategy.
 
 The first Windows Nspire milestone should use the same protocol fixtures and verification rules as Android.
+
+
+## CX II outer USB envelope
+
+CX II-class hardware adds an outer message layer around the ordinary Nspire/NavNet stream.
+
+Current independently implemented facts recorded for the probe:
+
+- normal CX II bulk traffic uses endpoint `0x01` OUT and `0x81` IN;
+- envelope header is 12 bytes;
+- header length and sequence fields are big-endian 16-bit values;
+- header checksum is a one's-complement 16-bit word checksum;
+- host address is `0xFE`, calculator address `0x01`, broadcast `0xFF`;
+- service `0x04` carries the ordinary Nspire protocol stream;
+- bit `0x80` on a service identifies an ACK;
+- incoming messages requesting acknowledgement must be ACKed using the same sequence number and reversed addresses.
+
+The probe branch now has a pure codec for this envelope with JVM tests. The live handshake remains disabled until endpoint descriptors and initial packets are confirmed on a real CX II.
