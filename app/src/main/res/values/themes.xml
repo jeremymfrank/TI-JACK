@@ -73,7 +73,9 @@
         <item name="android:navigationBarColor">@color/contrast_bg</item>
     </style>
 
-    <style name="Theme.TIJack.Light" parent="@style/Theme.TIJack.Base">
+    <style name="Theme.TIJack.Light" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:windowActionModeOverlay">true</item>
         <item name="tiBg">@color/light_bg</item>
         <item name="tiPanel">@color/light_panel</item>
         <item name="tiSelection">@color/light_selection</item>
